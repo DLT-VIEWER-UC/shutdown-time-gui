@@ -1,0 +1,47 @@
+# Duration of the test in seconds
+script-execution-time-in-seconds: 130
+
+# Number of iterations to run the test
+iterations: 3
+
+# Serial port for the relay
+serial-port-relay: COM11
+
+# Baudrate for the relay
+baudrate-relay: 9600
+
+# Transfer FGS from local to ECU
+fgs_transfer: false
+
+# Windows-specific settings
+windows:
+  # Flag to indicate if the path is set
+  isPathSet: false
+
+  # Path to the dlt viewer
+  # dltViewerPath: C:\Users\kes\AppData\Local\Programs\dlt-viewer
+  dltViewerPath: C:\ProgramData\Programs\dlt-viewer
+
+# ECU_settings
+setup-config:
+  - setup-type: "ELITE"
+    setup-enabled: false
+    ecu-list-config:
+      - ecu-type: "RCAR"
+        ecu-enabled: true
+      - ecu-type: "SOC0"
+        ecu-enabled: true
+      - ecu-type: "SOC1"
+        ecu-enabled: true
+  - setup-type: "PADAS"
+    setup-enabled: true
+    ecu-list-config:
+      - ecu-type: "RCAR"
+        ecu-enabled: true
+ecu-config:
+  - ecu-type: "RCAR"
+    ip-address: "192.168.1.5"
+  - ecu-type: "SOC0"
+    ip-address: "192.168.1.3"
+  - ecu-type: "SOC1"
+    ip-address: "192.168.1.58"

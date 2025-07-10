@@ -1,0 +1,16 @@
+{
+    "script-execution-time-in-seconds": 120,
+    "iterations": 3,
+    "windows": {
+        "isPathSet": false,
+        "dltViewerPath": "C:/Users/nanib/Downloads/DLT-Windows-sdk/dist/DLTViewer-2.27.0-STABLE-qt5.15.2-r1123_msvc2019_x64-win64.exe"
+    },
+    "PADAS": {
+        "RCAR": false
+    },
+    "Elite": {
+        "RCAR": true,
+        "SoC0": false,
+        "SoC1": true
+    }
+}

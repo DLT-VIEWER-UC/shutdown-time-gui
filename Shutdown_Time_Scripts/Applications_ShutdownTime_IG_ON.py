@@ -40,8 +40,8 @@ class ECUType(Enum):
     RCAR = "RCAR"
     PADAS = "PADAS"
     ELITE = "ELITE"
-    SOC0 = "SOC0"
-    SOC1 = "SOC1"
+    SoC0 = "SoC0"
+    SoC1 = "SoC1"
 
 # Define a custom type for the shutdown summary information
 class ShutdownSummaryInfo(TypedDict):
@@ -835,17 +835,34 @@ def main():
         shutdown_summary_map = {}
         setup_type = None
         enabled_ecu_list = set()
-        for setup in config['setup-config']:
-            if setup['setup-enabled']:
-                setup_type = setup['setup-type']
-                enabled_ecu_list = set([ecu['ecu-type'] for ecu in setup['ecu-list-config'] if ecu['ecu-enabled']])
-                break
+               
+        if config.get('PADAS', {}).get('RCAR', False):
+            enabled_ecu_list.add('RCAR')
+            setup_type = 'PADAS'
+        else:
+            for board_type, enabled in config.get('Elite', {}).items():
+                if enabled:
+                    enabled_ecu_list.add(board_type)
+                    setup_type = 'ELITE'
+       
+        print(setup_type, enabled_ecu_list)
         if setup_type is None or len(enabled_ecu_list) == 0:
             logger.error("No enabled ECU found in the configuration.")
             return
+            
+        ecu_config_list = [
+            {
+                'ecu-type': ecu_name,
+                'ip-address': (
+                    config['ECU_setting']['RCAR_IPAddress'] if ecu_name == ECUType.RCAR.value else
+                    config['ECU_setting']['Qualcomm_SoC0_IPAddress'] if ecu_name == ECUType.SoC0.value else
+                    config['ECU_setting']['Qualcomm_SoC1_IPAddress'] if ecu_name == ECUType.SoC1.value else
+                    None
+                )
+            }
+            for ecu_name in enabled_ecu_list
+        ]
 
-       
-        ecu_config_list = [ecu for ecu in config['ecu-config'] if ecu['ecu-type'] in enabled_ecu_list]
         for ecu in ecu_config_list:
             workbook_map[ecu['ecu-type']] = tuple(create_workBook(ecu['ecu-type'], iterations))
 

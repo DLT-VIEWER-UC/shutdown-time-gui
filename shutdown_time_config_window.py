@@ -32,6 +32,7 @@ class ShutdownTimeConfig(QDialog):
         # 'script-execution-time-in-seconds': 0,
         # 'iterations': 0,
         # 'threshold-in-seconds': 0,
+        'fgs-transfer': False,
         'windows': {'isPathSet': False, 'dltViewerPath': ''},
         'ecu-config': []
     }
@@ -117,6 +118,9 @@ class ShutdownTimeConfig(QDialog):
                 row_layout.addWidget(QLabel('sec'))
             general_layout.addRow(QLabel(key), row_layout)
             self.widgets[key] = le
+        fgs_transfer_cb = QCheckBox(); fgs_transfer_cb.setChecked(self.config_data.get('fgs-transfer', False))
+        general_layout.addRow(QLabel('fgs-transfer'), fgs_transfer_cb)
+        self.widgets['fgs-transfer'] = fgs_transfer_cb
         general_group.setLayout(general_layout)
         layout.addWidget(general_group)
 
@@ -294,6 +298,7 @@ class ShutdownTimeConfig(QDialog):
             'isPathSet': self.widgets['windows.isPathSet'].isChecked(),
             'dltViewerPath': self.widgets['windows.dltViewerPath'].text()
         }
+        data['fgs-transfer'] = self.widgets['fgs-transfer'].isChecked()
         data['PADAS'] = {
             'RCAR': self.rcar_cb.isChecked() and self.padas_radio.isChecked()
         }

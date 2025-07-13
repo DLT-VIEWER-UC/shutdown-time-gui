@@ -35,7 +35,6 @@ class ShutdownInfo(TypedDict):
     difference: float
     difference_ms: float
 
-
 class ECUType(Enum):
     RCAR = "RCAR"
     PADAS = "PADAS"
@@ -50,13 +49,23 @@ class ShutdownSummaryInfo(TypedDict):
     max_time: float
     values: List[float]
     avg_time: float
+
+class ResultThread(threading.Thread):
+   def __init__(self, target, args=(), kwargs=None):
+       super().__init__()
+       self._target = target
+       self._args   = args
+       self._kwargs = kwargs or {}
+       self.result  = None
+   def run(self):
+       # run() is what .start() invokes
+       self.result = self._target(*self._args, **self._kwargs)
    
 
-# Declare global variables
-local_save_path = Path(__file__).parent # Get the current file path
 
-# Get the current date and time
-current_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+logger = None
+local_save_path = None
+current_timestamp = None
 
 
 # Define the column names for the application shutdown time data
@@ -93,16 +102,15 @@ def setup_logging():
 
 
 def remove_png_files():
-    # Get a list of all PNG files in the current directory
-        png_files = [file for file in os.listdir() if file.endswith('.png')]
-
-        # Delete each PNG file
-        for file in png_files:
-            try:
-                # logger.info(file)
-                os.remove(file)
-            except Exception as e:
-                logger.error(f"Error deleting file {file}: {e}")    
+    script_dir = Path(__file__).parent
+    png_files = list(script_dir.glob('*.png'))
+    for file in png_files:
+        try:
+            # logger.info(f"Deleting {file.name}")
+            file.unlink()
+        except Exception as e:
+            pass
+            logger.info(f"Error deleting file {file}: {e}")  
 
 
 
@@ -272,7 +280,7 @@ def plot_shutdown_times(terminated_apps, sheet, start_row, ecu_type):
 
 
 
-def get_log_file_path(ecu_type, iterations, current_timestamp, index):
+def get_log_file_path(ecu_type, iterations, index):
     # Construct the log file name based on the ECU type and timestamp
     basename = f'{current_timestamp}_Shutdown_Time_Logs_{ecu_type}_N{index + 1}'
     # basename = f'20250602_191926_Shutdown_Time_Logs_{ecu_type}_N{index + 1}'
@@ -296,7 +304,7 @@ def get_log_file_path(ecu_type, iterations, current_timestamp, index):
     # Return the log file path and name
     return filename, logfile, dltfile
 
-def get_log_file_paths_for_elite(index, current_timestamp, ecu_config_list):
+def get_log_file_paths_for_elite(index, ecu_config_list, setup_type):
    
     parent_dir = local_save_path / "Logs"
     ecu_type_list = [ecu['ecu-type'] for ecu in ecu_config_list]
@@ -304,7 +312,7 @@ def get_log_file_paths_for_elite(index, current_timestamp, ecu_config_list):
     filename_list = {}
    
     for logs_dir, ecu_type in zip(logs_dir_list, ecu_type_list):
-        basename = f'{current_timestamp}_Shutdown_Time_Logs_{ecu_type}_N{index + 1}'
+        basename = f'{current_timestamp}_Shutdown_Time_Logs_{setup_type}_{ecu_type}_N{index + 1}'
         # basename = f'20250530_204941_Shutdown_Time_Logs_{ecu_type}_N{index + 1}'
         logfile = basename+'.log'
         dltfile = basename+'.dlt'
@@ -389,46 +397,58 @@ def create_header(sheet, ecu_type, app_columns):
     return start_row
 
 
-def export_and_plot_average_data_to_excel(sheet, ecu_type: str, shutdown_summary: Dict[str, ShutdownSummaryInfo]):
-    # Create a header in the Excel sheet for the average data
-    start_row = create_header(sheet, ecu_type, 'shutdown_summary_columns')
+def export_and_plot_average_data_to_excel(sheet, ecu_type: str, shutdown_summary: Dict[str, ShutdownSummaryInfo], workbook, report_file):
+    try:
+        # Check if the workbook creation was successful
+        if sheet is None:
+            logger.error("Error: Unable to create workbook.")
+            return False
+        
+        # Create a header in the Excel sheet for the average data
+        start_row = create_header(sheet, ecu_type, 'shutdown_summary_columns')
 
 
-    # Initialize an empty list to store the data
-    data = [app for app in shutdown_summary.values()]
+        # Initialize an empty list to store the data
+        data = [app for app in shutdown_summary.values()]
 
-    # Sort the data based on the average time
-    data.sort(key=lambda x: x['avg_time'])
+        # Sort the data based on the average time
+        data.sort(key=lambda x: x['avg_time'])
 
-    # Append the sorted data to the Excel sheet
-    for data_row in data:
-        sheet.append([data_row['process'], round(data_row['min_time'], 0), round(data_row['max_time'], 0), round(data_row['avg_time'], 0)])
+        # Append the sorted data to the Excel sheet
+        for data_row in data:
+            sheet.append([data_row['process'], round(data_row['min_time'], 0), round(data_row['max_time'], 0), round(data_row['avg_time'], 0)])
 
-    # Plot the average data as a graph
-    terminated_apps = [{'process': app['process'], 'difference_ms': app['avg_time']} for app in data]
-    plot_shutdown_times(terminated_apps, sheet, start_row, ecu_type)
+        # Plot the average data as a graph
+        terminated_apps = [{'process': app['process'], 'difference_ms': app['avg_time']} for app in data]
+        plot_shutdown_times(terminated_apps, sheet, start_row, ecu_type)
 
-    # Format the Excel cells
-    format_excel_cells(sheet, start_row)
-   
-    # Adjust the column width of the Excel sheet
-    adjust_column_width(sheet, ecu_type)
+        # Format the Excel cells
+        format_excel_cells(sheet, start_row)
+
+        # Adjust the column width of the Excel sheet
+        adjust_column_width(sheet, ecu_type)
+        
+        # Save the Excel workbook
+        workbook.save(report_file)
+    except Exception as e:
+        logger.error(f"Error exporting and plotting average data to Excel: {e}")
+        return False
+    
+    return True
 
 
-def add_logfile_hyperlink(report_path, log_path, sheet):
+def add_logfile_hyperlink(report_path, log_path, sheet, ecu_type, setup_type):
     # Get the next available row in the sheet
     row_no = sheet.max_row + 2
  
     # Set the text for the hyperlink
-    sheet.cell(row=row_no, column=1).value = "Log File:"
-   
-    report_dir = os.path.dirname(report_path)  
-    relative_path = os.path.relpath(log_path, report_dir)        
-    relative_path = os.path.join("..", "Logs", os.path.basename(log_path))  
+    sheet.cell(row=row_no, column=1).value = "Log File:"  
  
     # Use Excel's =HYPERLINK() formula with the relative path
-    hyperlink_formula = f'=HYPERLINK("{relative_path}", "{log_path}")'
- 
+    if setup_type == ECUType.ELITE.value:
+        hyperlink_formula = f'=HYPERLINK(".\Logs\{ecu_type}\{log_path}", "{log_path}")'
+    else:
+        hyperlink_formula = f'=HYPERLINK(".\Logs\{log_path}", "{log_path}")'
     # Insert the hyperlink formula
     sheet.cell(row=row_no + 1, column=1).value = hyperlink_formula
    
@@ -459,13 +479,12 @@ def generate_apps_shutdown_report_from_QNX_shutdown(ecu_type, sheet, welcome_tim
 def calculate_differences(initial_shutdown_timestamp, application_shutdown_timestamps) -> Tuple[datetime, List[ShutdownInfo]]:
     # Initialize an empty dictionary to store differences
     process_shutdown_timing_info = []
-    initial_shutdown_datetime = None
+    initial_shutdown_datetime = datetime.strptime(initial_shutdown_timestamp, '%Y/%m/%d %H:%M:%S.%f')
     # Iterate over each DLTStart timestamp
     for app_name, app_timestamp in application_shutdown_timestamps.items():
         try:
             # Parse the DLTStart timestamp and welcome timestamp to datetime objects
             app_datetime = datetime.strptime(app_timestamp, '%Y/%m/%d %H:%M:%S.%f')
-            initial_shutdown_datetime = datetime.strptime(initial_shutdown_timestamp, '%Y/%m/%d %H:%M:%S.%f')
             # Calculate the difference between the two timestamps
             difference = abs((app_datetime - initial_shutdown_datetime).total_seconds())
            
@@ -529,11 +548,11 @@ def extract_shutdown_timing_data(lines: List[str]) -> Tuple[str, OrderedDict[str
     return (mfg_timestamp, terminated_apps)
 
 
-def RCAR_ON_OFF_Relay():
+def RCAR_ON_OFF_Relay(power_on_off_delay):
     try:
         logger.info("Turning OFF relay...")
         subprocess.run(["usbrelay", "BITFT_1=0"])
-        time.sleep(3)  #  delay
+        time.sleep(float(power_on_off_delay))  #  delay
 
         logger.info("Turning ON relay...")
         subprocess.run(["usbrelay", "BITFT_1=1"])
@@ -541,36 +560,38 @@ def RCAR_ON_OFF_Relay():
 
     except Exception as e:
         logger.error(f"Error executing usbrelay commands: {e}")
-        sys.exit(1)(1)        
+        return False
+    return True     
 
 
-def power_ON_OFF_Relay(serial_port_Relay, baudrate_Relay):
+def power_ON_OFF_Relay(serial_port_relay, baudrate_relay, power_on_off_delay):
     try:
         #set up your serial port with the desire COM port and baudrate.
-        signal = serial.Serial(serial_port_Relay, baudrate_Relay, timeout=1)
+        signal = serial.Serial(serial_port_relay, baudrate_relay, bytesize=8, stopbits=1, timeout=1)
         if not signal.is_open:
-            logger.error(f"Failed to open serial port: {serial_port_Relay}")
-            sys.exit(1)(1)
+            logger.error(f"Failed to open serial port: {serial_port_relay}")
+            return False
        
         logger.info("Turning OFF relay...")
         signal.write("AT+CH1=0".encode())   # Relay OFF
-        time.sleep(15)
+        time.sleep(float(power_on_off_delay))  # Delay for power off
        
         logger.info("Turning ON relay...")
         signal.write("AT+CH1=1".encode())   # Relay ON
         time.sleep(0.1)  # 100ms delay
     except Exception as e:
         logger.error(f"Failed to open serial port: {e}")
-        sys.exit(1)
+        return False
+    return True
 
 
-def create_workBook(ecu_type, iterations):
+def create_workBook(ecu_type, setup_type, iterations, config):
     try:
         # Create the report file name based on the ECU type and current timestamp
-        reportName = f"Application_Shutdown_Time_{ecu_type}_N{iterations}_{current_timestamp}.xlsx"
+        reportName = f"Application_Shutdown_Time_{setup_type}_{ecu_type}_N{iterations}_{current_timestamp}.xlsx"
        
         # Define the directory where the report will be saved
-        report_dir = local_save_path / "Reports"
+        report_dir = local_save_path
        
         # Define the full path of the report file
         report_file = report_dir / reportName
@@ -729,86 +750,114 @@ def validate_ip_address(ecu_config_list):
             return False
     return True
 
-def capture_logs_from_dlt_viewer(log_file_name, dlt_file_name, project_file_name, config):
+def capture_logs_from_dlt_viewer(log_file_name, dlt_file_name, project_file_name, config, ecu_type):
     print("capture_logs_from_dlt_viewer :: START")
     timeout = config['script-execution-time-in-seconds']
+    script_dir = Path(__file__).parent.joinpath("dlt-viewer.bat")
 
     if sys.platform.startswith("win"):
         isPathSet = config['windows']['isPathSet']
         if isPathSet:
-            subprocess.call([r"dlt-viewer.bat", "dlt-viewer.exe", str(timeout), log_file_name, dlt_file_name, project_file_name])
+            subprocess.call([script_dir, "dlt-viewer.exe", str(timeout), log_file_name, dlt_file_name, project_file_name])
         else:
             dlt_viewer_path = config['windows']['dltViewerPath']
-            dlt_viewer_path = os.path.join(dlt_viewer_path, "dlt-viewer.exe")
+            # dlt_viewer_path = os.path.join(dlt_viewer_path, "dlt-viewer.exe")
             log_file_name = os.path.join(log_file_name)
             logger.info(f"dlt_viewer_path: {dlt_viewer_path}")
             logger.info(f"log_file_name : {log_file_name}")
             # subprocess.call([r"dlt-viewer.bat", dlt_viewer_path + "\\", str(timeout), log_file_name])
-            subprocess.call([r"dlt-viewer.bat", dlt_viewer_path, str(timeout), log_file_name, dlt_file_name, project_file_name])
+            subprocess.call([script_dir, dlt_viewer_path, str(timeout), log_file_name, dlt_file_name, project_file_name])
     elif sys.platform.startswith("linux"):
         subprocess.run("timeout " + str(timeout) + " dlt-viewer -p "+project_file_name+" -l "+dlt_file_name+" -v", shell=True)
         print("Converting *.dlt to *.txt...")
         subprocess.run("dlt-viewer -c  "+str(dlt_file_name)+" "+str(log_file_name), shell=True)
         print("Conversion done, successfully...")
 
+    size = os.path.getsize(log_file_name)
+    if size == 0:
+        logger.warning(f"Generated {os.path.basename(log_file_name)} is empty, Please check for valid IP-address / Status of {ecu_type}.")
+        return False
+    return True
+
 
  
 
-def process_log_file(i, ecu_type, log_file_details, dlp_file, config, sheet, shutdown_summary):
-    filename, logfile, dltfile = log_file_details
-    capture_logs_from_dlt_viewer(filename, dltfile, dlp_file, config)
-    # Attempt to open the log file in read mode with error handling for encoding issues
+def process_log_file(i, ecu_type, setup_type, log_file_details, dlp_file, config, sheet, shutdown_summary):
     try:
-        with open(filename, 'r', encoding='utf-8', errors='ignore') as file:
-            lines = file.readlines()
-            time.sleep(2)
-    except FileNotFoundError:
-        logger.error(f"File not found: {filename}")
-        return
-    except UnicodeDecodeError as e:
-        logger.error(f"Unicode decode error: {e}")
-        return
-           
-    # Extract the shutdown timing data from the log file
-    mfg_timestamp, terminated_apps = extract_shutdown_timing_data(lines)
-    if mfg_timestamp is None:
-        logger.error("Error: Unable to extract shutdown timing data.")
-        return
-   
-    if (terminated_apps is None) or (len(terminated_apps) == 0):
-        logger.error("Error: No terminated applications found.")
-        return
-   
-    mfg_datetime, shutdown_app_timings = calculate_differences(mfg_timestamp, terminated_apps)
-    print("differences::"+str(shutdown_app_timings))
-   
-    # Check if the differences were calculated
-    if shutdown_app_timings is None or len(shutdown_app_timings) == 0:
-        logger.error("Found error in measuring time differences from EXM termination to applications termination time")
-        return
-           
-    update_shutdown_summary(shutdown_summary, shutdown_app_timings)
+        # Get the log file path and name for the specified ECU type and timestamp
+        filename, logfile, dltfile = log_file_details
+        if not capture_logs_from_dlt_viewer(filename, dltfile, dlp_file, config, ecu_type):
+            return False
+        # Attempt to open the log file in read mode with error handling for encoding issues
+        try:
+            with open(filename, 'r', encoding='utf-8', errors='ignore') as file:
+                lines = file.readlines()
+                time.sleep(2)
+        except FileNotFoundError:
+            logger.error(f"File not found: {filename}")
+            return False
+        except UnicodeDecodeError as e:
+            logger.error(f"Unicode decode error: {e}")
+            return False
+            
+        # Extract the shutdown timing data from the log file
+        mfg_timestamp, terminated_apps = extract_shutdown_timing_data(lines)
+        if mfg_timestamp is None:
+            logger.error("Error: Unable to extract shutdown timing data.")
+            return False
+    
+        if (terminated_apps is None) or (len(terminated_apps) == 0):
+            logger.error("Error: No terminated applications found.")
+            return False
+    
+        mfg_datetime, shutdown_app_timings = calculate_differences(mfg_timestamp, terminated_apps)
+        print("differences::"+str(shutdown_app_timings))
+    
+        # Check if the differences were calculated
+        if shutdown_app_timings is None or len(shutdown_app_timings) == 0:
+            logger.error("Found error in measuring time differences from EXM termination to applications termination time")
+            return False
+            
+        update_shutdown_summary(shutdown_summary, shutdown_app_timings)
 
-    generate_apps_shutdown_report_from_QNX_shutdown(ecu_type, sheet, mfg_datetime, shutdown_app_timings)
-   
-    # Add a hyperlink to the log file in the Excel sheet
-    add_logfile_hyperlink(filename, logfile, sheet)            
+        generate_apps_shutdown_report_from_QNX_shutdown(ecu_type, sheet, mfg_datetime, shutdown_app_timings)
+    
+        # Add a hyperlink to the log file in the Excel sheet
+        add_logfile_hyperlink(filename, logfile, sheet, ecu_type, setup_type)
+
+    except Exception as e:
+        logger.error(f"Exception :: {e}")
+        return False
+    return True          
 
 
-def main():
+def start_shutdown_time_measurement():
+    cur_dt_time_obj = datetime.now()
+    global local_save_path
+    # local_save_path = Path(__file__).parents[1].joinpath("Reports", "04_Shutdown_Time", "20250707_12-34-56")
+    local_save_path = Path(__file__).parents[1].joinpath("Reports", "04_Shutdown_Time", cur_dt_time_obj.strftime("%Y%m%d_%H-%M-%S"))
+    local_save_path.mkdir(parents=True, exist_ok=True)
+    global current_timestamp
+    # current_timestamp = '20250707_123456'
+    current_timestamp = cur_dt_time_obj.strftime("%Y%m%d_%H%M%S")
+    
+    
     script_start_time = time.perf_counter()
     try:
-        # Set the ECU type (this will be used to determine the configuration and reporting)
-        ecu_type = "PADAS_ECU"
+        global logger
+        logger = setup_logging()
+        
+        isSuccess = True
+        anySheet = []
 
         # Load the configuration
-        config_file_path = 'ECU_config.yml'
+        config_file_path = 'shutdown_time_config.json'
         config = load_config(config_file_path)
 
         # Check if the configuration is empty
         if config is None:
             logger.error(f"File '{config_file_path}' not found.")
-            return
+            return False
        
         if config['windows']['dltViewerPath'] and not os.path.isfile(os.path.join(config['windows']['dltViewerPath'], 'dlt-viewer.exe')):
             logger.error("Configured dlt-viewer path is not valid.")
@@ -819,16 +868,16 @@ def main():
             iterations = config["iterations"]
         except KeyError:
             logger.error("Error: 'iterations' key not found in the configuration file.")
-            return
+            return False
        
         try:
             duration = config["script-execution-time-in-seconds"]
             if not isinstance(duration, int):
                 logger.error("Error: 'duration' must be an integer.")
-                return
+                return False
         except KeyError:
             logger.error("Error: 'duration' key not found in the configuration file.")
-            return
+            return False
 
         workbook_map = {}
         # Initialize a dictionary to store the shutdown summary data
@@ -848,7 +897,7 @@ def main():
         print(setup_type, enabled_ecu_list)
         if setup_type is None or len(enabled_ecu_list) == 0:
             logger.error("No enabled ECU found in the configuration.")
-            return
+            return False
             
         ecu_config_list = [
             {
@@ -864,11 +913,11 @@ def main():
         ]
 
         for ecu in ecu_config_list:
-            workbook_map[ecu['ecu-type']] = tuple(create_workBook(ecu['ecu-type'], iterations))
+            workbook_map[ecu['ecu-type']] = tuple(create_workBook(ecu['ecu-type'], setup_type, iterations, config))
 
             if workbook_map[ecu['ecu-type']][2] is None:
                 logger.error("Error: Unable to create workbook.")
-                return
+                return False
 
             shutdown_summary_map[ecu['ecu-type']] = {}
 
@@ -876,13 +925,17 @@ def main():
             return False
            
         dlp_files = create_dlp_files(ecu_config_list, setup_type)
+        if not dlp_files and len(dlp_files)==0:
+            return False
 
         for i in range(iterations):
            
             if setup_type == ECUType.RCAR.value:
-                RCAR_ON_OFF_Relay()
+                if not RCAR_ON_OFF_Relay(config.get('power-on-off-delay-in-seconds', 25)):
+                    return False
             else:
-                power_ON_OFF_Relay(config.get('serial-port-relay'), config.get('baudrate-relay'))
+                if not power_ON_OFF_Relay(config.get('serial-port-relay'), config.get('baudrate-relay'), config.get('power-on-off-delay-in-seconds', 25)):
+                    return False
 
             threads = []
            
@@ -891,17 +944,18 @@ def main():
                
                 filename_list = {}
                 if setup_type == ECUType.ELITE.value:
-                    filename_list = get_log_file_paths_for_elite(i, current_timestamp, ecu_config_list)
+                    filename_list = get_log_file_paths_for_elite(i, ecu_config_list, setup_type)
                 else:
-                    filename_list[ecu_type] = tuple(get_log_file_path(ecu_type, iterations, current_timestamp, i))
+                    filename_list[ecu_type] = tuple(get_log_file_path(ecu_type, iterations, i))
                 if any(not filename for (filename, logfile, dltfile) in filename_list.values()):
                     logger.error("Log file not created")
-                    return
-                thread = threading.Thread(
+                    return False
+                thread = ResultThread(
                     target=process_log_file,
                     args=(
                         i,
                         ecu_type,
+                        setup_type,
                         filename_list[ecu_type],
                         dlp_files[ecu_type],
                         config,
@@ -916,38 +970,39 @@ def main():
             # Wait for all threads to complete
             for thread in threads:
                 thread.join()
+                print("Thread result :: ", thread.result)
+                anySheet.append(thread.result)
+        print('anySheet:', anySheet)
+        if not any(anySheet):
+            isSuccess = False
 
         # Save workbooks and generate reports for each ECU type
         for ecu_type, (report_file, workbook, sheets, summary_sheet) in workbook_map.items():
            
             print("shutdown_summary::"+str(shutdown_summary_map[ecu_type]))
-            # Check if the workbook creation was successful
-            if summary_sheet is None:
-                logger.error("Error: Unable to create workbook.")
-                return
-
             # Export the average data to the Excel sheet
-            export_and_plot_average_data_to_excel(summary_sheet, ecu_type, shutdown_summary_map[ecu_type])
-
-            # Save the Excel workbook
-            workbook.save(report_file)
-
-        remove_png_files()
-
-       
+            if not export_and_plot_average_data_to_excel(summary_sheet, ecu_type, shutdown_summary_map[ecu_type], workbook, report_file):
+                logger.error("Error exporting and plotting average data to Excel.")
+                isSuccess = False
 
         # logger. a success message
         logger.info(f"Test report is created successfully {report_file}")
 
+    except KeyError as e:
+        logger.error(f"Error: Missing expected key in ECU input fields: {e}")
+        isSuccess = False
     except Exception as e:
         logger.error(f"An error occurred: {e}")
+        isSuccess = False
     finally:
+        remove_png_files()
         script_end_time = time.perf_counter()
         logger.info(f"Total script execution time: {(script_end_time-script_start_time):.3f} seconds")
+    print("Final response :: ", isSuccess)
+    return isSuccess
 
 
 
 # Run the main function if the script is executed directly
 if __name__ == "__main__":
-    logger = setup_logging()
     main()

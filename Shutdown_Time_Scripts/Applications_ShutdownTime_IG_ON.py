@@ -22,6 +22,7 @@ from datetime import datetime
 from collections import OrderedDict
 from typing import Final, Tuple , Dict, OrderedDict
 from typing import List, TypedDict
+from fgs_transfer import FGSTransfer
 OFFSET_TIME: Final = 1.5
 import logging
 import colorlog
@@ -880,6 +881,7 @@ def start_shutdown_time_measurement():
             return False
 
         workbook_map = {}
+        fgs_map = {}
         # Initialize a dictionary to store the shutdown summary data
         shutdown_summary_map = {}
         setup_type = None
@@ -899,20 +901,36 @@ def start_shutdown_time_measurement():
             logger.error("No enabled ECU found in the configuration.")
             return False
             
+        def get_ecu_setting(config, ecu_name, setting_type):
+            ecu_prefix = 'RCAR' if ecu_name == ECUType.RCAR.value else f'Qualcomm_SoC{0 if ecu_name == ECUType.SoC0.value else 1}'
+            logger.info("get_ecu_setting :: {}".format(f'{ecu_prefix}_{setting_type}'))
+            return config['ECU_setting'].get(f'{ecu_prefix}_{setting_type}')
+
         ecu_config_list = [
             {
                 'ecu-type': ecu_name,
-                'ip-address': (
-                    config['ECU_setting']['RCAR_IPAddress'] if ecu_name == ECUType.RCAR.value else
-                    config['ECU_setting']['Qualcomm_SoC0_IPAddress'] if ecu_name == ECUType.SoC0.value else
-                    config['ECU_setting']['Qualcomm_SoC1_IPAddress'] if ecu_name == ECUType.SoC1.value else
-                    None
-                )
+                'ip-address': get_ecu_setting(config, ecu_name, 'IPAddress'),
+                'ftp-user': get_ecu_setting(config, ecu_name, 'FTPUsername'), 
+                'ftp-passwd': get_ecu_setting(config, ecu_name, 'FTPPassword'),
+                'tn-user': get_ecu_setting(config, ecu_name, 'TelnetUsername'),
+                'tn-passwd': get_ecu_setting(config, ecu_name, 'TelnetPassword')
             }
             for ecu_name in enabled_ecu_list
         ]
 
         for ecu in ecu_config_list:
+            fgs_transfer = FGSTransfer(
+                config,
+                logger,
+                ecu['ip-address'],
+                ecu['tn-user'],
+                ecu['tn-passwd'],
+                ecu['ftp-user'],
+                ecu['ftp-passwd']
+            )
+            fgs_map[ecu['ecu-type']] = fgs_transfer
+            if not fgs_transfer.remote_fgs_transfer():
+                return False
             workbook_map[ecu['ecu-type']] = tuple(create_workBook(ecu['ecu-type'], setup_type, iterations, config))
 
             if workbook_map[ecu['ecu-type']][2] is None:
@@ -997,6 +1015,9 @@ def start_shutdown_time_measurement():
     finally:
         remove_png_files()
         script_end_time = time.perf_counter()
+        for ecu_type, fgs_transfer in fgs_map.items():
+            if fgs_transfer:
+                fgs_transfer.remote_fgs_cleanup()
         logger.info(f"Total script execution time: {(script_end_time-script_start_time):.3f} seconds")
     print("Final response :: ", isSuccess)
     return isSuccess

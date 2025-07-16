@@ -32,7 +32,6 @@ class ShutdownTimeConfig(QDialog):
         # 'script-execution-time-in-seconds': 0,
         # 'iterations': 0,
         # 'threshold-in-seconds': 0,
-        'fgs-transfer': False,
         'windows': {'isPathSet': False, 'dltViewerPath': ''},
         'ecu-config': []
     }
@@ -118,9 +117,6 @@ class ShutdownTimeConfig(QDialog):
                 row_layout.addWidget(QLabel('sec'))
             general_layout.addRow(QLabel(key), row_layout)
             self.widgets[key] = le
-        fgs_transfer_cb = QCheckBox(); fgs_transfer_cb.setChecked(self.config_data.get('fgs-transfer', False))
-        general_layout.addRow(QLabel('fgs-transfer'), fgs_transfer_cb)
-        self.widgets['fgs-transfer'] = fgs_transfer_cb
         general_group.setLayout(general_layout)
         layout.addWidget(general_group)
 
@@ -158,74 +154,6 @@ class ShutdownTimeConfig(QDialog):
        
         path_cb.toggled.connect(lambda checked: [path_le.setDisabled(checked), browse_btn.setDisabled(checked), count_lbl.setDisabled(checked), self.on_change_update_ok_btn_state()])#, self.ok_btn.setDisabled(False)])
 
-        # ECU Configurations
-        self.ec_group = QGroupBox('ECU Configurations')
-        self.ec_group.setFixedHeight(220)
-        ec_vbox = QVBoxLayout()
-
-        isElite, isPadas=False, False
-        isRCAR, isSOC0, isSOC1 = False, False, False
-        if self.config_data.get('PADAS', {}).get('RCAR', False):
-            isRCAR = True
-            isPadas = True
-        else:
-            for board_type, enabled in self.config_data.get('Elite', {}).items():
-                if enabled:
-                    isElite = True
-                    if board_type == 'RCAR':
-                        isRCAR = True
-                    elif board_type == 'SoC0':
-                        isSOC0 = True
-                    elif board_type == 'SoC1':
-                        isSOC1 = True
-                   
-        # print("isElite, isPadas", isElite, isPadas)
-        # print("isRCAR, isSOC0, isSOC1", isRCAR, isSOC0, isSOC1)            
-
-        self.ecu_selection_group = QGroupBox('ECU Selection')
-        self.ecu_selection_group.setFixedHeight(80)
-        # Radio setup
-        self.padas_radio = QRadioButton("PADAS")
-        self.elite_radio = QRadioButton("Elite")
-        self.setup_group = QButtonGroup()
-        self.setup_group.addButton(self.padas_radio)
-        self.setup_group.addButton(self.elite_radio)
-        self.elite_radio.setChecked(isElite)
-        self.padas_radio.setChecked(isPadas)
-        radio_h = QHBoxLayout()
-        radio_h.addWidget(self.padas_radio)
-        radio_h.addWidget(self.elite_radio)
-        self.ecu_selection_group.setLayout(radio_h)
-        ec_vbox.addWidget(self.ecu_selection_group)
-        self.padas_radio.toggled.connect(lambda checked: [self.on_radio_changed(checked), self.on_change_update_ok_btn_state()])
-        self.elite_radio.toggled.connect(lambda checked: [self.on_radio_changed(checked), self.on_change_update_ok_btn_state()])
-
-       
-        self.board_selection_group = QGroupBox('Board Selection')
-        self.board_selection_group.setFixedHeight(80)
-        board_selection_layout = QHBoxLayout()
-        self.rcar_cb = QCheckBox('RCAR');  self.rcar_cb.setChecked(isRCAR)
-        self.soc0_cb = QCheckBox('SoC0');  self.soc0_cb.setChecked(isSOC0)
-        self.soc1_cb = QCheckBox('SoC1');  self.soc1_cb.setChecked(isSOC1)
-        board_selection_layout.addWidget(self.rcar_cb)
-        board_selection_layout.addWidget(self.soc0_cb)
-        board_selection_layout.addWidget(self.soc1_cb)
-        self.board_selection_group.setLayout(board_selection_layout)
-        ec_vbox.addWidget(self.board_selection_group)
-
-        self.board_selection_group.setDisabled(not self.padas_radio.isChecked() and not self.elite_radio.isChecked())
-
-        if self.padas_radio.isChecked():
-            self.soc0_cb.setDisabled(True)
-            self.soc1_cb.setDisabled(True)              
-
-        self.ec_group.setLayout(ec_vbox)
-        layout.addWidget(self.ec_group)
-
-        self.rcar_cb.toggled.connect(lambda checked: [self.on_change_update_ok_btn_state()])
-        self.soc0_cb.toggled.connect(lambda checked: [self.on_change_update_ok_btn_state()])
-        self.soc1_cb.toggled.connect(lambda checked: [self.on_change_update_ok_btn_state()])
-
         # OK/Cancel
         btn_h = QHBoxLayout()
         btn_h.addStretch()
@@ -245,23 +173,6 @@ class ShutdownTimeConfig(QDialog):
         print("Shutdown Time configuration window closed successfully")
         super().done(result)
 
-    def on_radio_changed(self, checked):
-        # self.ok_btn.setDisabled(False)
-        visible = self.elite_radio.isChecked()
-        self.board_selection_group.setDisabled(False)
-        if visible:
-            self.soc0_cb.setDisabled(False)
-            self.soc1_cb.setDisabled(False)
-            self.soc0_cb.setChecked(False)
-            self.soc1_cb.setChecked(False)
-        else:
-            self.soc0_cb.setDisabled(True)
-            self.soc1_cb.setDisabled(True)
-            self.soc0_cb.setChecked(False)
-            self.soc1_cb.setChecked(False)
-        # for i in (1, 2):
-        #     self.ecu_block_list[i].setVisible(visible)
-
     def on_change_update_ok_btn_state(self):
         enabled = True
         for key in ['script-execution-time-in-seconds', 'iterations']: # , 'threshold-in-seconds'
@@ -273,11 +184,6 @@ class ShutdownTimeConfig(QDialog):
             path_cb = self.widgets['windows.isPathSet']
             path_le = self.widgets['windows.dltViewerPath']
             if not path_cb.isChecked() and (not path_le.text() or len(path_le.text()) == 0):
-                enabled = False
-        if enabled:
-            if not self.padas_radio.isChecked() and not self.elite_radio.isChecked():
-                enabled = False
-            elif not self.rcar_cb.isChecked() and not self.soc0_cb.isChecked() and not self.soc1_cb.isChecked():
                 enabled = False
 
         self.ok_btn.setEnabled(enabled)
@@ -297,15 +203,6 @@ class ShutdownTimeConfig(QDialog):
         data['windows'] = {
             'isPathSet': self.widgets['windows.isPathSet'].isChecked(),
             'dltViewerPath': self.widgets['windows.dltViewerPath'].text()
-        }
-        data['fgs-transfer'] = self.widgets['fgs-transfer'].isChecked()
-        data['PADAS'] = {
-            'RCAR': self.rcar_cb.isChecked() and self.padas_radio.isChecked()
-        }
-        data['Elite'] = {
-                'RCAR': self.rcar_cb.isChecked() and self.elite_radio.isChecked(),
-                'SoC0': self.soc0_cb.isChecked() and self.elite_radio.isChecked(),
-                'SoC1': self.soc1_cb.isChecked() and self.elite_radio.isChecked()
         }
         try:
             with open(self.config_path, 'w') as f:

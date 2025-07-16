@@ -12,7 +12,7 @@ import subprocess
 import threading
 import matplotlib.pyplot as plt
 import numpy as np
-from enum import Enum, auto
+from enum import Enum
 from openpyxl.drawing.image import Image
 import xml.etree.ElementTree as ET
 from openpyxl.styles import PatternFill, Border, Side, Alignment, Font
@@ -84,7 +84,7 @@ border_style = Border(left=Side(border_style='thin'), right=Side(border_style='t
 def setup_logging():
     # Set up colored logging configuration
     LOG_FORMAT = (
-        '%(log_color)s%(asctime)s - %(levelname)s - %(funcName)s - %(lineno)d - %(message)s%(reset)s'
+        '%(log_color)s%(asctime)s - %(levelname)s - %(threadName)s - %(funcName)s - %(lineno)d - %(message)s%(reset)s'
     )
     logging.root.setLevel(logging.INFO)  # Set the root logger level to INFO
 
@@ -281,9 +281,9 @@ def plot_shutdown_times(terminated_apps, sheet, start_row, ecu_type):
 
 
 
-def get_log_file_path(ecu_type, iterations, index):
+def get_log_file_path(ecu_type, setup_type, index):
     # Construct the log file name based on the ECU type and timestamp
-    basename = f'{current_timestamp}_Shutdown_Time_Logs_{ecu_type}_N{index + 1}'
+    basename = f'{current_timestamp}_Shutdown_Time_Logs_{setup_type}_{ecu_type}_N{index + 1}'
     # basename = f'20250602_191926_Shutdown_Time_Logs_{ecu_type}_N{index + 1}'
     logfile = basename+'.log'
     dltfile = basename+'.dlt'
@@ -964,7 +964,7 @@ def start_shutdown_time_measurement():
                 if setup_type == ECUType.ELITE.value:
                     filename_list = get_log_file_paths_for_elite(i, ecu_config_list, setup_type)
                 else:
-                    filename_list[ecu_type] = tuple(get_log_file_path(ecu_type, iterations, i))
+                    filename_list[ecu_type] = tuple(get_log_file_path(ecu_type, setup_type, i))
                 if any(not filename for (filename, logfile, dltfile) in filename_list.values()):
                     logger.error("Log file not created")
                     return False

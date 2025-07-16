@@ -60,7 +60,7 @@ class ShutdownTimeConfig(QDialog):
         # Define window dimensions
         # TODO: update these values as needed
         window_width = 900
-        window_height = 550
+        window_height = 330
 
         # Calculate the position to center the window
         x = main_window_x + (main_window_width - window_width) // 2

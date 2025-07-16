@@ -887,11 +887,11 @@ def start_shutdown_time_measurement():
         setup_type = None
         enabled_ecu_list = set()
                
-        if config.get('PADAS', {}).get('RCAR', False):
+        if config.get('ECU_setting', {}).get('PADAS', {}).get('RCAR', False):
             enabled_ecu_list.add('RCAR')
             setup_type = 'PADAS'
         else:
-            for board_type, enabled in config.get('Elite', {}).items():
+            for board_type, enabled in config.get('ECU_setting', {}).get('Elite', {}).items():
                 if enabled:
                     enabled_ecu_list.add(board_type)
                     setup_type = 'ELITE'

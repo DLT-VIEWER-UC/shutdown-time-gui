@@ -35,6 +35,12 @@ class ShutdownTimeConfig(QDialog):
         'windows': {'isPathSet': False, 'dltViewerPath': ''},
         'ecu-config': []
     }
+    CONFIG_GUI_FIELD_MAPPING = {
+        'script-execution-time-in-seconds': 'ScriptExecutionTime',
+        'iterations': 'Iterations',
+        'isPathSet': 'IsEnvironmentPathSet',
+        'dltViewerPath': 'DLT-ViewerInstalledPath'
+    }   
 
     def __init__(self, main_window):
         super().__init__()
@@ -115,18 +121,18 @@ class ShutdownTimeConfig(QDialog):
             row_layout.addWidget(le)
             if key != 'iterations':
                 row_layout.addWidget(QLabel('sec'))
-            general_layout.addRow(QLabel(key), row_layout)
+            general_layout.addRow(QLabel(self.CONFIG_GUI_FIELD_MAPPING[key]), row_layout)
             self.widgets[key] = le
         general_group.setLayout(general_layout)
         layout.addWidget(general_group)
 
         # Windows Settings
-        win_group = QGroupBox('Windows Settings')
+        win_group = QGroupBox('DLT Viewer Path Settings')
         win_group.setFixedHeight(100)
         win_layout = QFormLayout()
         win = self.config_data.get('windows', {})
         path_cb = QCheckBox(); path_cb.setChecked(win.get('isPathSet', False))
-        win_layout.addRow(QLabel('isPathSet'), path_cb)
+        win_layout.addRow(QLabel(self.CONFIG_GUI_FIELD_MAPPING['isPathSet']), path_cb)
         self.widgets['windows.isPathSet'] = path_cb
 
         # Path line edit with char count
@@ -142,7 +148,7 @@ class ShutdownTimeConfig(QDialog):
         hl.addWidget(path_le)
         hl.addWidget(browse_btn)
         hl.addWidget(count_lbl)
-        win_layout.addRow(QLabel('dltViewerPath'), hl)
+        win_layout.addRow(QLabel(self.CONFIG_GUI_FIELD_MAPPING['dltViewerPath']), hl)
         self.widgets['windows.dltViewerPath'] = path_le
         win_group.setLayout(win_layout)
         layout.addWidget(win_group)

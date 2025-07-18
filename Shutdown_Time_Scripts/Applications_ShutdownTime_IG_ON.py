@@ -901,19 +901,18 @@ def start_shutdown_time_measurement():
             logger.error("No enabled ECU found in the configuration.")
             return False
             
-        def get_ecu_setting(config, ecu_name, setting_type):
-            ecu_prefix = 'RCAR' if ecu_name == ECUType.RCAR.value else f'Qualcomm_SoC{0 if ecu_name == ECUType.SoC0.value else 1}'
-            logger.info("get_ecu_setting :: {}".format(f'{ecu_prefix}_{setting_type}'))
-            return config['ECU_setting'].get(f'{ecu_prefix}_{setting_type}')
+        def get_ecu_setting(config, prop):
+            logger.info("get_ecu_setting :: {}".format(prop))
+            return config['ECU_setting'].get(prop)
 
         ecu_config_list = [
             {
                 'ecu-type': ecu_name,
-                'ip-address': get_ecu_setting(config, ecu_name, 'IPAddress'),
-                'ftp-user': get_ecu_setting(config, ecu_name, 'FTPUsername'), 
-                'ftp-passwd': get_ecu_setting(config, ecu_name, 'FTPPassword'),
-                'tn-user': get_ecu_setting(config, ecu_name, 'TelnetUsername'),
-                'tn-passwd': get_ecu_setting(config, ecu_name, 'TelnetPassword')
+                'ip-address': get_ecu_setting(config, f'Qualcomm_{ecu_name}_IPAddress'),
+                'ftp-user': get_ecu_setting(config, f'{ecu_name}_FTP_Username'), 
+                'ftp-passwd': get_ecu_setting(config, f'{ecu_name}_FTP_Password'),
+                'tn-user': get_ecu_setting(config, f'{ecu_name}_Telnet_Username'),
+                'tn-passwd': get_ecu_setting(config, f'{ecu_name}_Telnet_Password')
             }
             for ecu_name in enabled_ecu_list
         ]

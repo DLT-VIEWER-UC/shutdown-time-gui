@@ -146,7 +146,7 @@ def adjust_column_width(sheet, ecu_type):
                 if not cell.value:
                     continue
                 # Skip cells with specific content
-                if f'Startup_Time_Logs_{ecu_type}' in str(cell.value):
+                if f'Shutdown_Time_Logs_{ecu_type}' in str(cell.value):
                     continue
                 # Check if the cell is part of a merged cell
                 is_merged = False
@@ -157,14 +157,16 @@ def adjust_column_width(sheet, ecu_type):
                 # If the cell is part of a merged cell, skip it
                 if is_merged:
                     continue
-                # Check if the cell's alignment has wrap text enabled
-                if cell.alignment.wrap_text:
-                    continue
+
                 # Attempt to retrieve the content of the cell and check its length
                 cell_content = str(cell.value)
-                # Update max_length if the current cell content is longer
-                if len(cell_content) > max_length:
-                    max_length = len(cell_content)
+                # Check if the cell's alignment has wrap text enabled
+                if cell.alignment.wrap_text:
+                    lines = cell_content.split('\n')
+                    max_length = max(max(len(line) for line in lines), max_length)
+                else:
+                    # If wrap text is not enabled, use the length of the cell content directly
+                    max_length = max(len(cell_content), max_length)
             except (TypeError, AttributeError, ValueError) as e:
                 # Handle specific exceptions
                 logger.error(f"An error occurred: {e}")

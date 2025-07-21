@@ -36,10 +36,10 @@ class ShutdownTimeConfig(QDialog):
         'ecu-config': []
     }
     CONFIG_GUI_FIELD_MAPPING = {
-        'script-execution-time-in-seconds': 'ScriptExecutionTime',
+        'script-execution-time-in-seconds': 'DLT-Viewer Log Capture Time',
         'iterations': 'Iterations',
-        'isPathSet': 'IsEnvironmentPathSet',
-        'dltViewerPath': 'DLT-ViewerInstalledPath'
+        'isPathSet': 'Is Environment Path Set',
+        'dltViewerPath': 'DLT-Viewer Installed Path'
     }   
 
     def __init__(self, main_window):

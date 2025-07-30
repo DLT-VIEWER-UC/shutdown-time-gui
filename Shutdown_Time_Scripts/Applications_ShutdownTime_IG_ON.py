@@ -936,7 +936,7 @@ def start_shutdown_time_measurement(logger):
         ecu_config_list = [
             {
                 'ecu-type': ecu_name,
-                'ip-address': get_ecu_setting(config, f'Qualcomm_{ecu_name}_IPAddress'),
+                'ip-address': get_ecu_setting(config, '' if ecu_name == ECUType.RCAR.value else 'Qualcomm_' f'{ecu_name}_IPAddress'),
                 'ftp-user': get_ecu_setting(config, f'{ecu_name}_FTP_Username'), 
                 'ftp-passwd': get_ecu_setting(config, f'{ecu_name}_FTP_Password'),
                 'tn-user': get_ecu_setting(config, f'{ecu_name}_Telnet_Username'),

@@ -783,15 +783,15 @@ def validate_ip_address(ecu_config_list, logger):
 
 def capture_logs_from_dlt_viewer(log_file_name, dlt_file_name, project_file_name, config, ecu_type, logger):
     print("capture_logs_from_dlt_viewer :: START")
-    timeout = config['script-execution-time-in-seconds']
+    timeout = config['DLT-Viewer Log Capture Time']
     script_dir = Path(__file__).parent.joinpath("dlt-viewer.bat")
 
     if sys.platform.startswith("win"):
-        isPathSet = config['windows']['isPathSet']
+        isPathSet = config['windows']['Is Environment Path Set']
         if isPathSet:
             subprocess.call([script_dir, "dlt-viewer.exe", str(timeout), log_file_name, dlt_file_name, project_file_name])
         else:
-            dlt_viewer_path = config['windows']['dltViewerPath']
+            dlt_viewer_path = config['windows']['DLT-Viewer Installed Path']
             # dlt_viewer_path = os.path.join(dlt_viewer_path, "dlt-viewer.exe")
             log_file_name = os.path.join(log_file_name)
             logger.info(f"dlt_viewer_path: {dlt_viewer_path}")
@@ -887,20 +887,20 @@ def start_shutdown_time_measurement(logger):
         if config is None:
             logger.error(f"File '{config_file_path}' not found.")
             return False
-       
-        if config['windows']['dltViewerPath'] and not os.path.isfile(os.path.join(config['windows']['dltViewerPath'], 'dlt-viewer.exe')):
-            logger.error("Configured dlt-viewer path is not valid.")
+
+        if config['windows']['DLT-Viewer Installed Path'] and not os.path.isfile(os.path.join(config['windows']['DLT-Viewer Installed Path'])):
+            logger.error("Configured DLT-Viewer path is not valid.")
             return False
 
         # Retrieve the number of iterations from the configuration
         try:
-            iterations = config["iterations"]
+            iterations = config["Iterations"]
         except KeyError:
-            logger.error("Error: 'iterations' key not found in the configuration file.")
+            logger.error("Error: 'Iterations' key not found in the configuration file.")
             return False
        
         try:
-            duration = config["script-execution-time-in-seconds"]
+            duration = config["DLT-Viewer Log Capture Time"]
             if not isinstance(duration, int):
                 logger.error("Error: 'duration' must be an integer.")
                 return False
@@ -976,10 +976,10 @@ def start_shutdown_time_measurement(logger):
         for i in range(iterations):
            
             if setup_type == ECUType.RCAR.value:
-                if not RCAR_ON_OFF_Relay(config.get('power-on-off-delay-in-seconds', 25), logger):
+                if not RCAR_ON_OFF_Relay(config.get('Power ON-OFF Delay', 25), logger):
                     return False
             else:
-                if not power_ON_OFF_Relay(config.get('serial-port-relay'), config.get('baudrate-relay'), config.get('power-on-off-delay-in-seconds', 25), logger):
+                if not power_ON_OFF_Relay(config.get('serial-port-relay'), config.get('baudrate-relay'), config.get('Power ON-OFF Delay', 25), logger):
                     return False
 
             threads = []

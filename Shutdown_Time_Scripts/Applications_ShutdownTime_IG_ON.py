@@ -12,6 +12,10 @@ import subprocess
 import threading
 import matplotlib.pyplot as plt
 import numpy as np
+import ipaddress
+import logging
+import colorlog
+import pandas as pd
 from enum import Enum
 from openpyxl.drawing.image import Image
 import xml.etree.ElementTree as ET
@@ -27,6 +31,7 @@ OFFSET_TIME: Final = 1.5
 import logging
 import colorlog
 import pandas as pd
+import ipaddress
 plot_lock = threading.Lock()
 
 # Define a custom type for the shutdown timing information
@@ -64,7 +69,6 @@ class ResultThread(threading.Thread):
    
 
 
-logger = None
 local_save_path = None
 current_timestamp = None
 
@@ -102,7 +106,7 @@ def setup_logging():
     return logging.getLogger(__name__)
 
 
-def remove_png_files():
+def remove_png_files(logger):
     script_dir = Path(__file__).parent
     png_files = list(script_dir.glob('*.png'))
     for file in png_files:
@@ -116,7 +120,7 @@ def remove_png_files():
 
 
 
-def adjust_column_width(sheet, ecu_type):
+def adjust_column_width(sheet, ecu_type, logger):
     # Special handling for merged cells in the header
     for merged_range in sheet.merged_cells.ranges:
         # Check if this is our header merged cell (usually in row 1)
@@ -400,7 +404,7 @@ def create_header(sheet, ecu_type, app_columns):
     return start_row
 
 
-def export_and_plot_average_data_to_excel(sheet, ecu_type: str, shutdown_summary: Dict[str, ShutdownSummaryInfo], workbook, report_file):
+def export_and_plot_average_data_to_excel(sheet, ecu_type: str, shutdown_summary: Dict[str, ShutdownSummaryInfo], workbook, report_file, logger):
     try:
         # Check if the workbook creation was successful
         if sheet is None:
@@ -429,7 +433,7 @@ def export_and_plot_average_data_to_excel(sheet, ecu_type: str, shutdown_summary
         format_excel_cells(sheet, start_row)
 
         # Adjust the column width of the Excel sheet
-        adjust_column_width(sheet, ecu_type)
+        adjust_column_width(sheet, ecu_type, logger)
         
         # Save the Excel workbook
         workbook.save(report_file)
@@ -460,7 +464,7 @@ def add_logfile_hyperlink(report_path, log_path, sheet, ecu_type, setup_type):
 
 
 
-def generate_apps_shutdown_report_from_QNX_shutdown(ecu_type, sheet, welcome_timestamp, differences):
+def generate_apps_shutdown_report_from_QNX_shutdown(ecu_type, sheet, welcome_timestamp, differences, logger):
     # Create the header for the Excel sheet
     start_row = create_header(sheet, ecu_type, 'shutdown_time_columns')
 
@@ -475,11 +479,9 @@ def generate_apps_shutdown_report_from_QNX_shutdown(ecu_type, sheet, welcome_tim
     format_excel_cells(sheet, start_row)
 
     # Adjust the column width of the Excel sheet
-    adjust_column_width(sheet, ecu_type)
-
-
+    adjust_column_width(sheet, ecu_type, logger)
 # Function to calculate the differences between DLTStart timestamps and the welcome timestamp
-def calculate_differences(initial_shutdown_timestamp, application_shutdown_timestamps) -> Tuple[datetime, List[ShutdownInfo]]:
+def calculate_differences(initial_shutdown_timestamp, application_shutdown_timestamps, logger) -> Tuple[datetime, List[ShutdownInfo]]:
     # Initialize an empty dictionary to store differences
     process_shutdown_timing_info = []
     initial_shutdown_datetime = datetime.strptime(initial_shutdown_timestamp, '%Y/%m/%d %H:%M:%S.%f')
@@ -551,7 +553,7 @@ def extract_shutdown_timing_data(lines: List[str]) -> Tuple[str, OrderedDict[str
     return (mfg_timestamp, terminated_apps)
 
 
-def RCAR_ON_OFF_Relay(power_on_off_delay):
+def RCAR_ON_OFF_Relay(power_on_off_delay, logger):
     try:
         logger.info("Turning OFF relay...")
         subprocess.run(["usbrelay", "BITFT_1=0"])
@@ -567,7 +569,7 @@ def RCAR_ON_OFF_Relay(power_on_off_delay):
     return True     
 
 
-def power_ON_OFF_Relay(serial_port_relay, baudrate_relay, power_on_off_delay):
+def power_ON_OFF_Relay(serial_port_relay, baudrate_relay, power_on_off_delay, logger):
     try:
         #set up your serial port with the desire COM port and baudrate.
         signal = serial.Serial(serial_port_relay, baudrate_relay, bytesize=8, stopbits=1, timeout=1)
@@ -588,7 +590,7 @@ def power_ON_OFF_Relay(serial_port_relay, baudrate_relay, power_on_off_delay):
     return True
 
 
-def create_workBook(ecu_type, setup_type, iterations, config):
+def create_workBook(ecu_type, setup_type, iterations, config, logger):
     try:
         # Create the report file name based on the ECU type and current timestamp
         reportName = f"Application_Shutdown_Time_{setup_type}_{ecu_type}_N{iterations}_{current_timestamp}.xlsx"
@@ -651,7 +653,7 @@ def create_workBook(ecu_type, setup_type, iterations, config):
         return None, None, None, None
 
 
-def load_config(file_path):
+def load_config(file_path, logger):
     try:
         config_path = Path(__file__).parent.joinpath(file_path)
         root, ext = os.path.splitext(config_path)
@@ -743,8 +745,34 @@ def update_shutdown_summary(shutdown_summary: Dict[str, ShutdownSummaryInfo], sh
                     'avg_time': app['difference_ms']
                 }
 
+def is_valid_ip(ip_str):
+    """
+    Validates whether a given string represents a valid IP address (IPv4 or IPv6).
+    
+    This function uses Python's ipaddress module to validate the format and
+    structure of an IP address string. It supports both IPv4 and IPv6 formats.
+    
+    Args:
+        ip_str (str): The IP address string to validate
+        
+    Returns:
+        bool: True if the IP address is valid, False otherwise
+        
+    Example:
+        >>> is_valid_ip("192.168.1.1")
+        True
+        >>> is_valid_ip("invalid_ip")
+        False
+        >>> is_valid_ip("2001:db8::1")
+        True
+    """
+    try:
+        ipaddress.ip_address(ip_str)
+        return True
+    except ValueError:
+        return False
 
-def validate_ip_address(ecu_config_list):
+def validate_ip_address(ecu_config_list, logger):
     for ecu in ecu_config_list:
         if is_valid_ip(ecu['ip-address']):
             continue
@@ -753,7 +781,7 @@ def validate_ip_address(ecu_config_list):
             return False
     return True
 
-def capture_logs_from_dlt_viewer(log_file_name, dlt_file_name, project_file_name, config, ecu_type):
+def capture_logs_from_dlt_viewer(log_file_name, dlt_file_name, project_file_name, config, ecu_type, logger):
     print("capture_logs_from_dlt_viewer :: START")
     timeout = config['script-execution-time-in-seconds']
     script_dir = Path(__file__).parent.joinpath("dlt-viewer.bat")
@@ -785,11 +813,11 @@ def capture_logs_from_dlt_viewer(log_file_name, dlt_file_name, project_file_name
 
  
 
-def process_log_file(i, ecu_type, setup_type, log_file_details, dlp_file, config, sheet, shutdown_summary):
+def process_log_file(i, ecu_type, setup_type, log_file_details, dlp_file, config, sheet, shutdown_summary, logger):
     try:
         # Get the log file path and name for the specified ECU type and timestamp
         filename, logfile, dltfile = log_file_details
-        if not capture_logs_from_dlt_viewer(filename, dltfile, dlp_file, config, ecu_type):
+        if not capture_logs_from_dlt_viewer(filename, dltfile, dlp_file, config, ecu_type, logger):
             return False
         # Attempt to open the log file in read mode with error handling for encoding issues
         try:
@@ -813,7 +841,7 @@ def process_log_file(i, ecu_type, setup_type, log_file_details, dlp_file, config
             logger.error("Error: No terminated applications found.")
             return False
     
-        mfg_datetime, shutdown_app_timings = calculate_differences(mfg_timestamp, terminated_apps)
+        mfg_datetime, shutdown_app_timings = calculate_differences(mfg_timestamp, terminated_apps, logger)
         print("differences::"+str(shutdown_app_timings))
     
         # Check if the differences were calculated
@@ -823,7 +851,7 @@ def process_log_file(i, ecu_type, setup_type, log_file_details, dlp_file, config
             
         update_shutdown_summary(shutdown_summary, shutdown_app_timings)
 
-        generate_apps_shutdown_report_from_QNX_shutdown(ecu_type, sheet, mfg_datetime, shutdown_app_timings)
+        generate_apps_shutdown_report_from_QNX_shutdown(ecu_type, sheet, mfg_datetime, shutdown_app_timings, logger)
     
         # Add a hyperlink to the log file in the Excel sheet
         add_logfile_hyperlink(filename, logfile, sheet, ecu_type, setup_type)
@@ -834,7 +862,7 @@ def process_log_file(i, ecu_type, setup_type, log_file_details, dlp_file, config
     return True          
 
 
-def start_shutdown_time_measurement():
+def start_shutdown_time_measurement(logger):
     cur_dt_time_obj = datetime.now()
     global local_save_path
     # local_save_path = Path(__file__).parents[1].joinpath("Reports", "04_Shutdown_Time", "20250707_12-34-56")
@@ -847,15 +875,13 @@ def start_shutdown_time_measurement():
     
     script_start_time = time.perf_counter()
     try:
-        global logger
-        logger = setup_logging()
         
         isSuccess = True
         anySheet = []
 
         # Load the configuration
         config_file_path = 'shutdown_time_config.json'
-        config = load_config(config_file_path)
+        config = load_config(config_file_path, logger)
 
         # Check if the configuration is empty
         if config is None:
@@ -932,7 +958,7 @@ def start_shutdown_time_measurement():
             fgs_map[ecu['ecu-type']] = fgs_transfer
             if not fgs_transfer.remote_fgs_transfer():
                 return False
-            workbook_map[ecu['ecu-type']] = tuple(create_workBook(ecu['ecu-type'], setup_type, iterations, config))
+            workbook_map[ecu['ecu-type']] = tuple(create_workBook(ecu['ecu-type'], setup_type, iterations, config, logger))
 
             if workbook_map[ecu['ecu-type']][2] is None:
                 logger.error("Error: Unable to create workbook.")
@@ -940,7 +966,7 @@ def start_shutdown_time_measurement():
 
             shutdown_summary_map[ecu['ecu-type']] = {}
 
-        if not validate_ip_address(ecu_config_list):
+        if not validate_ip_address(ecu_config_list, logger):
             return False
            
         dlp_files = create_dlp_files(ecu_config_list, setup_type)
@@ -950,10 +976,10 @@ def start_shutdown_time_measurement():
         for i in range(iterations):
            
             if setup_type == ECUType.RCAR.value:
-                if not RCAR_ON_OFF_Relay(config.get('power-on-off-delay-in-seconds', 25)):
+                if not RCAR_ON_OFF_Relay(config.get('power-on-off-delay-in-seconds', 25), logger):
                     return False
             else:
-                if not power_ON_OFF_Relay(config.get('serial-port-relay'), config.get('baudrate-relay'), config.get('power-on-off-delay-in-seconds', 25)):
+                if not power_ON_OFF_Relay(config.get('serial-port-relay'), config.get('baudrate-relay'), config.get('power-on-off-delay-in-seconds', 25), logger):
                     return False
 
             threads = []
@@ -979,7 +1005,8 @@ def start_shutdown_time_measurement():
                         dlp_files[ecu_type],
                         config,
                         sheets[i],
-                        shutdown_summary_map[ecu_type]
+                        shutdown_summary_map[ecu_type],
+                        logger
                      )
                 )
 
@@ -1000,7 +1027,7 @@ def start_shutdown_time_measurement():
            
             print("shutdown_summary::"+str(shutdown_summary_map[ecu_type]))
             # Export the average data to the Excel sheet
-            if not export_and_plot_average_data_to_excel(summary_sheet, ecu_type, shutdown_summary_map[ecu_type], workbook, report_file):
+            if not export_and_plot_average_data_to_excel(summary_sheet, ecu_type, shutdown_summary_map[ecu_type], workbook, report_file, logger):
                 logger.error("Error exporting and plotting average data to Excel.")
                 isSuccess = False
 
@@ -1014,7 +1041,7 @@ def start_shutdown_time_measurement():
         logger.error(f"An error occurred: {e}")
         isSuccess = False
     finally:
-        remove_png_files()
+        remove_png_files(logger)
         script_end_time = time.perf_counter()
         for ecu_type, fgs_transfer in fgs_map.items():
             if fgs_transfer:
@@ -1022,9 +1049,3 @@ def start_shutdown_time_measurement():
         logger.info(f"Total script execution time: {(script_end_time-script_start_time):.3f} seconds")
     print("Final response :: ", isSuccess)
     return isSuccess
-
-
-
-# Run the main function if the script is executed directly
-if __name__ == "__main__":
-    main()

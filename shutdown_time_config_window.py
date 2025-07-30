@@ -29,17 +29,11 @@ class CustomIntValidator(QIntValidator):
            
 class ShutdownTimeConfig(QDialog):
     DEFAULT_CONFIG = {
-        # 'script-execution-time-in-seconds': 0,
-        # 'iterations': 0,
+        # 'DLT-Viewer Log Capture Time': 0,
+        # 'Iterations': 0,
         # 'threshold-in-seconds': 0,
-        'windows': {'isPathSet': False, 'dltViewerPath': ''},
+        'windows': {'Is Environment Path Set': False, 'DLT-Viewer Installed Path': ''},
         'ecu-config': []
-    }
-    CONFIG_GUI_FIELD_MAPPING = {
-        'script-execution-time-in-seconds': 'DLT-Viewer Log Capture Time',
-        'iterations': 'Iterations',
-        'isPathSet': 'Is Environment Path Set',
-        'dltViewerPath': 'DLT-Viewer Installed Path'
     }   
 
     def __init__(self, main_window):
@@ -106,8 +100,8 @@ class ShutdownTimeConfig(QDialog):
         general_group.setFixedHeight(110)
         general_layout = QFormLayout()
         for key, validator in [
-            ('script-execution-time-in-seconds', CustomIntValidator(1, 500)),
-            ('iterations', CustomIntValidator(1, 50))
+            ('DLT-Viewer Log Capture Time', CustomIntValidator(1, 500)),
+            ('Iterations', CustomIntValidator(1, 50))
             # , ('threshold-in-seconds', CustomIntValidator(1, 100))
         ]:
             # print(key, str(self.config_data.get(key, '')))
@@ -119,9 +113,9 @@ class ShutdownTimeConfig(QDialog):
             le.setFixedWidth(150)
             row_layout = QHBoxLayout()
             row_layout.addWidget(le)
-            if key != 'iterations':
+            if key != 'Iterations':
                 row_layout.addWidget(QLabel('sec'))
-            general_layout.addRow(QLabel(self.CONFIG_GUI_FIELD_MAPPING[key]), row_layout)
+            general_layout.addRow(QLabel(key), row_layout)
             self.widgets[key] = le
         general_group.setLayout(general_layout)
         layout.addWidget(general_group)
@@ -131,12 +125,12 @@ class ShutdownTimeConfig(QDialog):
         win_group.setFixedHeight(100)
         win_layout = QFormLayout()
         win = self.config_data.get('windows', {})
-        path_cb = QCheckBox(); path_cb.setChecked(win.get('isPathSet', False))
-        win_layout.addRow(QLabel(self.CONFIG_GUI_FIELD_MAPPING['isPathSet']), path_cb)
-        self.widgets['windows.isPathSet'] = path_cb
+        path_cb = QCheckBox(); path_cb.setChecked(win.get('Is Environment Path Set', False))
+        win_layout.addRow(QLabel('Is Environment Path Set'), path_cb)
+        self.widgets['windows.Is Environment Path Set'] = path_cb
 
         # Path line edit with char count
-        path_le = QLineEdit(win.get('dltViewerPath', ''))
+        path_le = QLineEdit(win.get('DLT-Viewer Installed Path', ''))
         # path_le.textChanged.connect(lambda text: [self.ok_btn.setDisabled(False)])
         path_le.textChanged.connect(lambda text: [self.on_change_update_ok_btn_state()])
         path_le.setMaxLength(250)
@@ -148,8 +142,8 @@ class ShutdownTimeConfig(QDialog):
         hl.addWidget(path_le)
         hl.addWidget(browse_btn)
         hl.addWidget(count_lbl)
-        win_layout.addRow(QLabel(self.CONFIG_GUI_FIELD_MAPPING['dltViewerPath']), hl)
-        self.widgets['windows.dltViewerPath'] = path_le
+        win_layout.addRow(QLabel('DLT-Viewer Installed Path'), hl)
+        self.widgets['windows.DLT-Viewer Installed Path'] = path_le
         win_group.setLayout(win_layout)
         layout.addWidget(win_group)
 
@@ -181,14 +175,14 @@ class ShutdownTimeConfig(QDialog):
 
     def on_change_update_ok_btn_state(self):
         enabled = True
-        for key in ['script-execution-time-in-seconds', 'iterations']: # , 'threshold-in-seconds'
+        for key in ['DLT-Viewer Log Capture Time', 'Iterations']: # , 'threshold-in-seconds'
             text = self.widgets[key].text()
             if not text or len(text) == 0:
                 enabled = False
                 break
         if enabled:
-            path_cb = self.widgets['windows.isPathSet']
-            path_le = self.widgets['windows.dltViewerPath']
+            path_cb = self.widgets['windows.Is Environment Path Set']
+            path_le = self.widgets['windows.DLT-Viewer Installed Path']
             if not path_cb.isChecked() and (not path_le.text() or len(path_le.text()) == 0):
                 enabled = False
 
@@ -201,14 +195,14 @@ class ShutdownTimeConfig(QDialog):
 
     def save_config(self):
         data = {}
-        for key in ['script-execution-time-in-seconds', 'iterations']: # , 'threshold-in-seconds'
+        for key in ['DLT-Viewer Log Capture Time', 'Iterations']: # , 'threshold-in-seconds'
             w = self.widgets[key]
             # print(w.text())
             if w.text() and len(w.text())>0:
                 data[key] = int(w.text())
         data['windows'] = {
-            'isPathSet': self.widgets['windows.isPathSet'].isChecked(),
-            'dltViewerPath': self.widgets['windows.dltViewerPath'].text()
+            'Is Environment Path Set': self.widgets['windows.Is Environment Path Set'].isChecked(),
+            'DLT-Viewer Installed Path': self.widgets['windows.DLT-Viewer Installed Path'].text()
         }
         try:
             with open(self.config_path, 'w') as f:

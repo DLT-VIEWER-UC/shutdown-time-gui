@@ -272,8 +272,7 @@ def plot_shutdown_times(terminated_apps, sheet, start_row, ecu_type):
 
         # Get the current time
         timestamp = datetime.now().strftime("%M%S%f")
-        plot_image = f'graph_process_shutdown_{timestamp}.png'
-       
+        plot_image = Path(__file__).parent.joinpath(f'graph_process_shutdown_{ecu_type}_{timestamp}.png')
         # Save the figure
         plt.savefig(plot_image)
 

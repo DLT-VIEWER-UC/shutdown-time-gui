@@ -103,9 +103,9 @@ class ShutdownTimeConfig(QDialog):
             row_layout = QHBoxLayout()
             row_layout.addWidget(le)
             if key != 'Iterations':
-                row_layout.addWidget(QLabel('120 - 500 (sec)'))
+                row_layout.addWidget(QLabel('sec: 120-500 (Int)'))
             else:
-                row_layout.addWidget(QLabel('1 - 50'))
+                row_layout.addWidget(QLabel('1-50 (Int)'))
             general_layout.addRow(QLabel(key), row_layout)
             self.widgets[key] = le
         general_group.setLayout(general_layout)
@@ -149,6 +149,8 @@ class ShutdownTimeConfig(QDialog):
         layout.addLayout(btn_h)
 
         self.on_change_update_ok_btn_state()
+        for key in ['DLT-Viewer Log Capture Time', 'Iterations', 'windows.DLT-Viewer Installed Path']:
+            self.update_border(key)
         # self.ok_btn.setDisabled(True)        
 
     def ok_clicked(self):
@@ -207,6 +209,8 @@ class ShutdownTimeConfig(QDialog):
         self.ok_btn.setEnabled(enabled)
         if not enabled:
             self.ok_btn.setToolTip("To enable the OK Button, configure all red highlighted fields")
+        else:
+            self.ok_btn.setToolTip("")
 
     def browse_path(self, line_edit):
         path, _ = QFileDialog.getOpenFileName(self, 'Select dlt-viewer executable', '', 'Executable files (*.exe)')

@@ -103,9 +103,9 @@ class ShutdownTimeConfig(QDialog):
             row_layout = QHBoxLayout()
             row_layout.addWidget(le)
             if key != 'Iterations':
-                row_layout.addWidget(QLabel('sec: 120-500 (Int)'))
+                row_layout.addWidget(QLabel('[Int: 120-500 sec]'))
             else:
-                row_layout.addWidget(QLabel('1-50 (Int)'))
+                row_layout.addWidget(QLabel('[Int: 1-50]'))
             general_layout.addRow(QLabel(key), row_layout)
             self.widgets[key] = le
         general_group.setLayout(general_layout)

@@ -179,15 +179,18 @@ class ShutdownTimeConfig(QDialog):
         #     self.ecu_block_list[i].setVisible(visible)
         
     def update_border(self, key):
-        text = self.widgets[key].text()
-        if not text or len(text) == 0:
-            self.widgets[key].setStyleSheet("border: 1px solid red;")
-        elif key == 'DLT-Viewer Log Capture Time' and not (120 <= int(text) <= 500):
-            self.widgets[key].setStyleSheet("border: 1px solid red;")
-        elif key == 'windows.DLT-Viewer Installed Path' and (text.startswith(" ") or text.endswith(" ")) and not self.widgets['windows.Is Environment Path Set'].isChecked():
-            self.widgets[key].setStyleSheet("border: 1px solid red;")
+        widget = self.widgets[key]
+        text = widget.text().strip()
+        is_valid = True
+
+        if key == 'windows.DLT-Viewer Installed Path':
+            path_cb = self.widgets['windows.Is Environment Path Set']
+            is_valid = path_cb.isChecked() or (text and text == widget.text())
+        elif key == 'DLT-Viewer Log Capture Time':
+            is_valid = text and text.isdigit() and 120 <= int(text) <= 500
         else:
-            self.widgets[key].setStyleSheet("border: 0px;")
+            is_valid = bool(text)
+        widget.setStyleSheet("border: 0px;" if is_valid else "border: 1px solid red;")
 
     def on_change_update_ok_btn_state(self):
         enabled = True

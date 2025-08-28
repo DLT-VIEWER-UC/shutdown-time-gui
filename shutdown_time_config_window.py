@@ -1,40 +1,33 @@
 from imports_utils import *
 
 class CustomIntValidator(QIntValidator):
-    def __init__(self, minimum=1, maximum=300, parent=None):
-        super().__init__(minimum, maximum, parent)
-        self._min = minimum
-        self._max = maximum
-    def setRange(self, minimum, maximum):
-        self._min = minimum
-        self._max = maximum
-        super().setRange(minimum, maximum)
+    def __init__(self, min_value, max_value, parent=None):
+        super().__init__(min_value, max_value, parent)
+        self.min_value = min_value
+        self.max_value = max_value
+
     def validate(self, input_str, pos):
         if input_str == "":
             return (QIntValidator.Intermediate, input_str, pos)
-       
+
         if input_str.isdigit():
-            # Check for leading zeros
+            # Reject leading zeros unless the value is zero itself
             if input_str.startswith('0') and len(input_str) > 1:
                 return (QIntValidator.Invalid, input_str, pos)
+
             value = int(input_str)
- 
-            if self._min <= value:# <= self._max:
+            if self.min_value <= value <= self.max_value:
                 return (QIntValidator.Acceptable, input_str, pos)
             else:
                 return (QIntValidator.Invalid, input_str, pos)
         else:
             return (QIntValidator.Invalid, input_str, pos)
-       
+
            
 class ShutdownTimeConfig(QDialog):
     DEFAULT_CONFIG = {
-        # 'DLT-Viewer Log Capture Time': 0,
-        # 'Iterations': 0,
-        # 'threshold-in-seconds': 0,
-        'windows': {'Is Environment Path Set': False, 'DLT-Viewer Installed Path': ''},
-        'ecu-config': []
-    }   
+        'windows': {'Is Environment Path Set': False, 'DLT-Viewer Installed Path': ''}        
+    }
 
     def __init__(self, main_window):
         super().__init__()
@@ -59,8 +52,8 @@ class ShutdownTimeConfig(QDialog):
 
         # Define window dimensions
         # TODO: update these values as needed
-        window_width = 900
-        window_height = 330
+        window_width = 850
+        window_height = 250
 
         # Calculate the position to center the window
         x = main_window_x + (main_window_width - window_width) // 2
@@ -82,35 +75,31 @@ class ShutdownTimeConfig(QDialog):
         except Exception as e:
             return dict(self.DEFAULT_CONFIG)
 
-    def init_ui(self):
-        scroll = QScrollArea(self)
-        scroll.setWidgetResizable(True)
-        central = QWidget()
-        layout = QVBoxLayout(central)
+    def init_ui(self):      
+        layout = QVBoxLayout()      
        
-        scroll.setWidget(central)
-        # self.setCentralWidget(scroll)
-        dlg_layout = QVBoxLayout(self)
-        dlg_layout.addWidget(scroll)
-        self.setLayout(dlg_layout)
-
+        self.setLayout(layout)
 
         # General Settings
         general_group = QGroupBox('General Settings')
-        general_group.setFixedHeight(110)
+        general_group.setStyleSheet(common_groupbox_style)
+        # general_group.setFixedHeight(110)
         general_layout = QFormLayout()
+        general_layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
         for key, validator in [
             ('DLT-Viewer Log Capture Time', CustomIntValidator(1, 500)),
-            ('Iterations', CustomIntValidator(1, 50))
-            # , ('threshold-in-seconds', CustomIntValidator(1, 100))
-        ]:
-            # print(key, str(self.config_data.get(key, '')))
+            ('Iterations', CustomIntValidator(1, 50))]:
+
             le = QLineEdit(str(self.config_data.get(key, '')))
-            le.setPlaceholderText('0')
+            if key == 'DLT-Viewer Log Capture Time':
+                le.setPlaceholderText('1 - 500')
+            else:
+                le.setPlaceholderText('1 - 50')
             # le.textChanged.connect(lambda text: [self.ok_btn.setDisabled(False)])
             le.textChanged.connect(lambda text: [self.on_change_update_ok_btn_state()])
             le.setValidator(validator)
-            le.setFixedWidth(150)
+            le.setFixedWidth(100)
             row_layout = QHBoxLayout()
             row_layout.addWidget(le)
             if key != 'Iterations':
@@ -119,14 +108,10 @@ class ShutdownTimeConfig(QDialog):
             self.widgets[key] = le
         general_group.setLayout(general_layout)
         layout.addWidget(general_group)
-
-        # Windows Settings
-        win_group = QGroupBox('DLT Viewer Path Settings')
-        win_group.setFixedHeight(100)
-        win_layout = QFormLayout()
+       
         win = self.config_data.get('windows', {})
         path_cb = QCheckBox(); path_cb.setChecked(win.get('Is Environment Path Set', False))
-        win_layout.addRow(QLabel('Is Environment Path Set'), path_cb)
+        general_layout.addRow(QLabel('Is Environment Path Set'), path_cb)
         self.widgets['windows.Is Environment Path Set'] = path_cb
 
         # Path line edit with char count
@@ -142,19 +127,18 @@ class ShutdownTimeConfig(QDialog):
         hl.addWidget(path_le)
         hl.addWidget(browse_btn)
         hl.addWidget(count_lbl)
-        win_layout.addRow(QLabel('DLT-Viewer Installed Path'), hl)
+        general_layout.addRow(QLabel('DLT-Viewer Installed Path'), hl)
         self.widgets['windows.DLT-Viewer Installed Path'] = path_le
-        win_group.setLayout(win_layout)
-        layout.addWidget(win_group)
+        general_group.setLayout(general_layout)
+        layout.addWidget(general_group)
 
         # Enable/disable path based on checkbox
         path_le.setDisabled(path_cb.isChecked())
         browse_btn.setDisabled(path_cb.isChecked())
         count_lbl.setDisabled(path_cb.isChecked())
        
-        path_cb.toggled.connect(lambda checked: [path_le.setDisabled(checked), browse_btn.setDisabled(checked), count_lbl.setDisabled(checked), self.on_change_update_ok_btn_state()])#, self.ok_btn.setDisabled(False)])
+        path_cb.toggled.connect(lambda checked: [path_le.setDisabled(checked), browse_btn.setDisabled(checked), count_lbl.setDisabled(checked), self.on_change_update_ok_btn_state()])
 
-        # OK/Cancel
         btn_h = QHBoxLayout()
         btn_h.addStretch()
         self.ok_btn = QPushButton('OK'); self.ok_btn.clicked.connect(self.ok_clicked)
@@ -173,6 +157,23 @@ class ShutdownTimeConfig(QDialog):
         print("Shutdown Time configuration window closed successfully")
         super().done(result)
 
+    def on_radio_changed(self, checked):
+        # self.ok_btn.setDisabled(False)
+        visible = self.elite_radio.isChecked()
+        self.board_selection_group.setDisabled(False)
+        if visible:
+            self.soc0_cb.setDisabled(False)
+            self.soc1_cb.setDisabled(False)
+            self.soc0_cb.setChecked(False)
+            self.soc1_cb.setChecked(False)
+        else:
+            self.soc0_cb.setDisabled(True)
+            self.soc1_cb.setDisabled(True)
+            self.soc0_cb.setChecked(False)
+            self.soc1_cb.setChecked(False)
+        # for i in (1, 2):
+        #     self.ecu_block_list[i].setVisible(visible)
+
     def on_change_update_ok_btn_state(self):
         enabled = True
         for key in ['DLT-Viewer Log Capture Time', 'Iterations']: # , 'threshold-in-seconds'
@@ -184,12 +185,12 @@ class ShutdownTimeConfig(QDialog):
             path_cb = self.widgets['windows.Is Environment Path Set']
             path_le = self.widgets['windows.DLT-Viewer Installed Path']
             if not path_cb.isChecked() and (not path_le.text() or len(path_le.text()) == 0):
-                enabled = False
+                enabled = False        
 
         self.ok_btn.setEnabled(enabled)
 
     def browse_path(self, line_edit):
-        path, _ = QFileDialog.getOpenFileName(self, 'Select dlt-viewer executable')
+        path, _ = QFileDialog.getOpenFileName(self, 'Select dlt-viewer executable', '', 'Executable files (*.exe)')
         if path:
             line_edit.setText(path)
 
@@ -204,6 +205,7 @@ class ShutdownTimeConfig(QDialog):
             'Is Environment Path Set': self.widgets['windows.Is Environment Path Set'].isChecked(),
             'DLT-Viewer Installed Path': self.widgets['windows.DLT-Viewer Installed Path'].text()
         }
+       
         try:
             with open(self.config_path, 'w') as f:
                 json.dump(data, f, indent=4)

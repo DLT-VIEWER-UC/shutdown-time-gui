@@ -1,5 +1,5 @@
 # Import necessary libraries
-import re
+import re, ipaddress
 import os
 import sys
 import json
@@ -12,9 +12,6 @@ import subprocess
 import threading
 import matplotlib.pyplot as plt
 import numpy as np
-import ipaddress
-import logging
-import colorlog
 import pandas as pd
 from enum import Enum
 from openpyxl.drawing.image import Image
@@ -26,13 +23,11 @@ from datetime import datetime
 from collections import OrderedDict
 from typing import Final, Tuple , Dict, OrderedDict
 from typing import List, TypedDict
-from fgs_transfer import FGSTransfer
-OFFSET_TIME: Final = 1.5
-import logging
-import colorlog
-import pandas as pd
-import ipaddress
+from Shutdown_Time_Scripts.fgs_transfer import FGSTransfer
+
 plot_lock = threading.Lock()
+
+OFFSET_TIME: Final = 1.5
 
 # Define a custom type for the shutdown timing information
 class ShutdownInfo(TypedDict):
@@ -63,15 +58,15 @@ class ResultThread(threading.Thread):
        self._args   = args
        self._kwargs = kwargs or {}
        self.result  = None
+
    def run(self):
        # run() is what .start() invokes
        self.result = self._target(*self._args, **self._kwargs)
-   
 
-
+# py_logger = None
 local_save_path = None
 current_timestamp = None
-
+table_headers = None
 
 # Define the column names for the application shutdown time data
 application_shutdown_time_columns = ['Services/Applications', 'Time (HH:MM:SS:MS)', 'Shutdown Time (SS:MS)',
@@ -84,86 +79,65 @@ application_shutdown_summary_columns = ['Services/Applications', 'Minimum (sec)'
 border_style = Border(left=Side(border_style='thin'), right=Side(border_style='thin'),
                         top=Side(border_style='thin'), bottom=Side(border_style='thin'))
 
-
-def setup_logging():
-    # Set up colored logging configuration
-    LOG_FORMAT = (
-        '%(log_color)s%(asctime)s - %(levelname)s - %(threadName)s - %(funcName)s - %(lineno)d - %(message)s%(reset)s'
-    )
-    logging.root.setLevel(logging.INFO)  # Set the root logger level to INFO
-
-    # Configure the colorlog formatter
-    formatter = colorlog.ColoredFormatter(LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S")
-
-    # Create a StreamHandler for console output
-    stream = logging.StreamHandler()
-    stream.setFormatter(formatter)    
-   
-
-    logging.root.addHandler(stream)    
-
-    # Return the configured logger
-    return logging.getLogger(__name__)
-
-
-def remove_png_files(logger):
+def remove_png_files(py_logger):
     script_dir = Path(__file__).parent
     png_files = list(script_dir.glob('*.png'))
     for file in png_files:
         try:
-            # logger.info(f"Deleting {file.name}")
+            # py_logger.info(f"Deleting {file.name}")
             file.unlink()
         except Exception as e:
             pass
-            logger.info(f"Error deleting file {file}: {e}")  
-
-
+            py_logger.info(f"Error deleting file {file}: {e}")  
 
 
 def adjust_column_width(sheet, ecu_type, logger):
-    # Special handling for merged cells in the header
-    for merged_range in sheet.merged_cells.ranges:
-        # Check if this is our header merged cell (usually in row 1)
-        if merged_range.min_row == 1:
-            # Get the text from the top-left cell of the merged range
-            header_text = sheet.cell(row=merged_range.min_row, column=merged_range.min_col).value
-            if header_text:
-                # Calculate total width needed for the merged cell
-                text_length = len(str(header_text))
-                # Distribute width across merged columns
-                num_columns = merged_range.max_col - merged_range.min_col + 1
-                width_per_column = max(text_length / num_columns + 5, 12)  # Add padding
-                # Set width for each column in the merged range
-                for col_idx in range(merged_range.min_col, merged_range.max_col + 1):
-                    column_letter = get_column_letter(col_idx)
-                    sheet.column_dimensions[column_letter].width = width_per_column
+    """
+    Automatically adjusts column widths in an Excel worksheet based on content length.
+   
+    This function analyzes the content of each column in the worksheet and sets
+    the column width to accommodate the longest content with some padding. It
+    intelligently handles various Excel formatting scenarios including merged cells,
+    wrapped text, and specific content types.
+   
+    Args:
+        sheet (openpyxl.worksheet.worksheet.Worksheet): The Excel worksheet to adjust
+        ecu_type (str): The ECU type identifier used to skip certain log file references
+       
+    Features:
+        - Calculates optimal width based on maximum content length in each column
+        - Skips merged cells to avoid width calculation conflicts
+        - Ignores cells with text wrapping enabled
+        - Filters out log file references containing ECU type
+        - Ensures minimum column width of 9 characters
+        - Adds 3 characters padding for better readability
+       
+    Note:
+        This function is essential for creating professional-looking Excel reports
+        where all content is visible without manual column width adjustments.
+    """
     # Iterate through each column in the Excel sheet
     for col in sheet.columns:
         # Initialize a variable to track the maximum content length within the column
         max_length = 0
+       
         # Extract the letter representing the label of the current column
         column_letter = get_column_letter(col[0].column)
+
         # Iterate through each cell in the current column, starting from the start_row
         for cell in col[0:]:
             try:
                 # Check if the cell is empty
                 if not cell.value:
                     continue
+               
                 # Skip cells with specific content
-                if f'Shutdown_Time_Logs_{ecu_type}' in str(cell.value):
-                    continue
-                # Check if the cell is part of a merged cell
-                is_merged = False
-                for merged_cell in sheet.merged_cells.ranges:
-                    if cell.coordinate in merged_cell:
-                        is_merged = True
-                        break
-                # If the cell is part of a merged cell, skip it
-                if is_merged:
+                if f'Startup_Time_Logs_{ecu_type}' in str(cell.value)  or str(cell.value) in table_headers:
                     continue
 
                 # Attempt to retrieve the content of the cell and check its length
                 cell_content = str(cell.value)
+               
                 # Check if the cell's alignment has wrap text enabled
                 if cell.alignment.wrap_text:
                     lines = cell_content.split('\n')
@@ -171,14 +145,16 @@ def adjust_column_width(sheet, ecu_type, logger):
                 else:
                     # If wrap text is not enabled, use the length of the cell content directly
                     max_length = max(len(cell_content), max_length)
+
             except (TypeError, AttributeError, ValueError) as e:
                 # Handle specific exceptions
                 logger.error(f"An error occurred: {e}")
+
         # Calculate the adjusted width for the column based on the maximum content length with extra space
-        adjusted_width = max(max_length + 10, 9)  # Ensure a minimum width of 9
+        adjusted_width = max(max_length + 3, 9)  # Ensure a minimum width of 9
+
         # Set the column width in the Excel sheet to the calculated adjusted width
         sheet.column_dimensions[column_letter].width = adjusted_width
-
 def format_excel_cells(sheet, start_row):
     # Iterate over each row in the sheet, starting from the specified row
     for row in sheet.iter_rows(min_row=start_row, max_row=sheet.max_row):
@@ -215,7 +191,6 @@ def format_excel_cells(sheet, start_row):
            
             # Apply the defined border style to the cell
             cell.border = border_style
-
 
 def plot_shutdown_times(terminated_apps, sheet, start_row, ecu_type):
     with plot_lock:
@@ -272,7 +247,9 @@ def plot_shutdown_times(terminated_apps, sheet, start_row, ecu_type):
 
         # Get the current time
         timestamp = datetime.now().strftime("%M%S%f")
+        # plot_image = f'graph_process_shutdown_{timestamp}.png'
         plot_image = Path(__file__).parent.joinpath(f'graph_process_shutdown_{ecu_type}_{timestamp}.png')
+       
         # Save the figure
         plt.savefig(plot_image)
 
@@ -282,9 +259,6 @@ def plot_shutdown_times(terminated_apps, sheet, start_row, ecu_type):
         # Add the plot to the Excel sheet
         img = Image(plot_image)
         sheet.add_image(img, f'H{start_row}')
-
-
-
 
 def get_log_file_path(ecu_type, setup_type, index):
     # Construct the log file name based on the ECU type and timestamp
@@ -306,7 +280,7 @@ def get_log_file_path(ecu_type, setup_type, index):
         # Create the logs directory
         logs_dir.mkdir()
 
-    # logger.info(f"filename : {filename}")
+    # py_logger.info(f"filename : {filename}")
     # Return the log file path and name
     return filename, logfile, dltfile
 
@@ -328,7 +302,6 @@ def get_log_file_paths_for_elite(index, ecu_config_list, setup_type):
     print(f"Log files will be saved in the following directories: {filename_list}")
     return filename_list
 
-
 def write_data_to_excel(welcome_timestamp: datetime, differences: List[ShutdownInfo], sheet):
     # Create a data row for the EXM_2001 termination time
     formatted_time = welcome_timestamp.strftime('%H:%M:%S.%f')[:-3]
@@ -342,7 +315,6 @@ def write_data_to_excel(welcome_timestamp: datetime, differences: List[ShutdownI
         formatted_time = app['shutdown_time'].strftime('%H:%M:%S.%f')[:-3]
         data_row = [app['process'], formatted_time, round(app['difference'], 3), round(app['difference_ms'], 0)]
         sheet.append(data_row)
-
 
 def create_header(sheet, ecu_type, app_columns):
     # Check if the sheet has existing rows and append empty rows if necessary
@@ -362,6 +334,7 @@ def create_header(sheet, ecu_type, app_columns):
         # If avg_flag is False, only include Startup Time in the header
         header = f'Services/Applications Shutdown Time from QNX Termination on {ecu_type} (Min, Max, Avg)'
         columns = application_shutdown_summary_columns
+    table_headers.append(header)
 
     # Append the header text to the sheet
     sheet.append([header])
@@ -402,14 +375,13 @@ def create_header(sheet, ecu_type, app_columns):
     # Return the row number where the header starts
     return start_row
 
-
-def export_and_plot_average_data_to_excel(sheet, ecu_type: str, shutdown_summary: Dict[str, ShutdownSummaryInfo], workbook, report_file, logger):
+def export_and_plot_average_data_to_excel(sheet, ecu_type: str, shutdown_summary: Dict[str, ShutdownSummaryInfo], workbook, report_file, py_logger):
     try:
         # Check if the workbook creation was successful
         if sheet is None:
-            logger.error("Error: Unable to create workbook.")
+            py_logger.error("Error: Unable to create workbook.")
             return False
-        
+       
         # Create a header in the Excel sheet for the average data
         start_row = create_header(sheet, ecu_type, 'shutdown_summary_columns')
 
@@ -432,16 +404,15 @@ def export_and_plot_average_data_to_excel(sheet, ecu_type: str, shutdown_summary
         format_excel_cells(sheet, start_row)
 
         # Adjust the column width of the Excel sheet
-        adjust_column_width(sheet, ecu_type, logger)
-        
+        adjust_column_width(sheet, ecu_type, py_logger)
+       
         # Save the Excel workbook
         workbook.save(report_file)
     except Exception as e:
-        logger.error(f"Error exporting and plotting average data to Excel: {e}")
+        py_logger.error(f"Error exporting and plotting average data to Excel: {e}")
         return False
-    
+   
     return True
-
 
 def add_logfile_hyperlink(report_path, log_path, sheet, ecu_type, setup_type):
     # Get the next available row in the sheet
@@ -461,9 +432,7 @@ def add_logfile_hyperlink(report_path, log_path, sheet, ecu_type, setup_type):
     # Set the font color of the hyperlink to blue
     sheet.cell(row=row_no + 1, column=1).font = Font(color="0000FF")
 
-
-
-def generate_apps_shutdown_report_from_QNX_shutdown(ecu_type, sheet, welcome_timestamp, differences, logger):
+def generate_apps_shutdown_report_from_QNX_shutdown(ecu_type, sheet, welcome_timestamp, differences, py_logger):
     # Create the header for the Excel sheet
     start_row = create_header(sheet, ecu_type, 'shutdown_time_columns')
 
@@ -478,9 +447,10 @@ def generate_apps_shutdown_report_from_QNX_shutdown(ecu_type, sheet, welcome_tim
     format_excel_cells(sheet, start_row)
 
     # Adjust the column width of the Excel sheet
-    adjust_column_width(sheet, ecu_type, logger)
+    adjust_column_width(sheet, ecu_type, py_logger)
+
 # Function to calculate the differences between DLTStart timestamps and the welcome timestamp
-def calculate_differences(initial_shutdown_timestamp, application_shutdown_timestamps, logger) -> Tuple[datetime, List[ShutdownInfo]]:
+def calculate_differences(initial_shutdown_timestamp, application_shutdown_timestamps, py_logger) -> Tuple[datetime, List[ShutdownInfo], ]:
     # Initialize an empty dictionary to store differences
     process_shutdown_timing_info = []
     initial_shutdown_datetime = datetime.strptime(initial_shutdown_timestamp, '%Y/%m/%d %H:%M:%S.%f')
@@ -502,9 +472,8 @@ def calculate_differences(initial_shutdown_timestamp, application_shutdown_times
            
         except ValueError:
             # Handle any errors parsing the timestamps
-            logger.error(f"Error parsing timestamp for process {app_name}: {app_timestamp}")
+            py_logger.error(f"Error parsing timestamp for process {app_name}: {app_timestamp}")
     return initial_shutdown_datetime, process_shutdown_timing_info
-
 
 def extract_shutdown_timing_data(lines: List[str]) -> Tuple[str, OrderedDict[str, str]]:
     # Flag to indicate if we've found the shutdown message
@@ -542,6 +511,7 @@ def extract_shutdown_timing_data(lines: List[str]) -> Tuple[str, OrderedDict[str
                 # Store in dictionary (will overwrite if app_name already exists)
                 # For duplicates, the last occurrence's timestamp will be kept
                 terminated_apps[app_name] = app_timestamp
+
     print("MachineFG Timestamp ::", mfg_timestamp)
     print("Terminated Applications (duplicates removed):")
     print("-------------------------------------------")
@@ -551,45 +521,42 @@ def extract_shutdown_timing_data(lines: List[str]) -> Tuple[str, OrderedDict[str
        
     return (mfg_timestamp, terminated_apps)
 
-
-def RCAR_ON_OFF_Relay(power_on_off_delay, logger):
+def RCAR_ON_OFF_Relay(power_on_off_delay, py_logger):
     try:
-        logger.info("Turning OFF relay...")
+        py_logger.info("Turning OFF relay...")
         subprocess.run(["usbrelay", "BITFT_1=0"])
         time.sleep(float(power_on_off_delay))  #  delay
 
-        logger.info("Turning ON relay...")
+        py_logger.info("Turning ON relay...")
         subprocess.run(["usbrelay", "BITFT_1=1"])
         time.sleep(0.2)  #  delay
 
     except Exception as e:
-        logger.error(f"Error executing usbrelay commands: {e}")
+        py_logger.error(f"Error executing usbrelay commands: {e}")
         return False
-    return True     
+    return True    
 
-
-def power_ON_OFF_Relay(serial_port_relay, baudrate_relay, power_on_off_delay, logger):
+def power_ON_OFF_Relay(serial_port_relay, baudrate_relay, power_on_off_delay, py_logger):
     try:
         #set up your serial port with the desire COM port and baudrate.
         signal = serial.Serial(serial_port_relay, baudrate_relay, bytesize=8, stopbits=1, timeout=1)
         if not signal.is_open:
-            logger.error(f"Failed to open serial port: {serial_port_relay}")
+            py_logger.error(f"Failed to open serial port: {serial_port_relay}")
             return False
        
-        logger.info("Turning OFF relay...")
+        py_logger.info("Turning OFF relay...")
         signal.write("AT+CH1=0".encode())   # Relay OFF
         time.sleep(float(power_on_off_delay))  # Delay for power off
        
-        logger.info("Turning ON relay...")
+        py_logger.info("Turning ON relay...")
         signal.write("AT+CH1=1".encode())   # Relay ON
         time.sleep(0.1)  # 100ms delay
     except Exception as e:
-        logger.error(f"Failed to open serial port: {e}")
+        py_logger.error(f"Failed to open serial port: {e}")
         return False
     return True
 
-
-def create_workBook(ecu_type, setup_type, iterations, config, logger):
+def create_workBook(ecu_type, setup_type, iterations, py_logger):
     try:
         # Create the report file name based on the ECU type and current timestamp
         reportName = f"Application_Shutdown_Time_{setup_type}_{ecu_type}_N{iterations}_{current_timestamp}.xlsx"
@@ -606,13 +573,13 @@ def create_workBook(ecu_type, setup_type, iterations, config, logger):
             report_dir.mkdir()
        
     except OSError as e:
-        # If an error occurs while creating the directory, logger. the error message and return None
-        logger.error(f"Error creating directory: {e}")
+        # If an error occurs while creating the directory, py_logger. the error message and return None
+        py_logger.error(f"Error creating directory: {e}")
         return None, None, None
    
     except Exception as e:
-        # If any other exception occurs, logger. the error message and return None
-        logger.error(f"An unexpected error occurred: {e}")
+        # If any other exception occurs, py_logger. the error message and return None
+        py_logger.error(f"An unexpected error occurred: {e}")
         return None, None, None
 
     try:
@@ -639,22 +606,20 @@ def create_workBook(ecu_type, setup_type, iterations, config, logger):
             # Hide the grid lines in the sheet
             sheet_exl.sheet_view.showGridLines = False
 
-        summary_sheet.sheet_view.showGridLines = False
-
-       
+        summary_sheet.sheet_view.showGridLines = False      
        
         # Return the report file path, workbook object, and active sheet object
         return report_file, workbook, sheets, summary_sheet
    
     except Exception as e:
-        # If any exception occurs while creating the workbook or sheet, logger. the error message and return None
-        logger.error(f"An error occurred while creating the workbook or sheet: {e}")
+        # If any exception occurs while creating the workbook or sheet, py_logger. the error message and return None
+        py_logger.error(f"An error occurred while creating the workbook or sheet: {e}")
         return None, None, None, None
 
-
-def load_config(file_path, logger):
+def load_config(file_path, py_logger):
     try:
         config_path = Path(__file__).parent.joinpath(file_path)
+        # print(f"config_path: {config_path}")
         root, ext = os.path.splitext(config_path)
         with open(config_path, 'r') as file:
             if ext == '.json':
@@ -662,14 +627,13 @@ def load_config(file_path, logger):
             elif ext in ('.yml', '.yaml'):
                 config = yaml.safe_load(file)
             else:
-                logger.error(f"'{file_path}' is not a valid config file")        
+                py_logger.error(f"'{file_path}' is not a valid config file")        
                 return None
 
         return config
     except (FileNotFoundError, PermissionError, yaml.YAMLError, IOError) as e:
-        logger.error(f"An error occurred while reading the file '{file_path}': {e}")
+        py_logger.error(f"An error occurred while reading the file '{file_path}': {e}")
         return None
-
    
 def create_dlp_files(ecu_config_list, setup_type):
     output_dir = 'DLP'
@@ -743,44 +707,23 @@ def update_shutdown_summary(shutdown_summary: Dict[str, ShutdownSummaryInfo], sh
                     'values': [app['difference_ms']],
                     'avg_time': app['difference_ms']
                 }
+def is_valid_ip(ip_string):
+   try:
+       ipaddress.ip_address(ip_string)
+       return True
+   except ValueError:
+       return False
 
-def is_valid_ip(ip_str):
-    """
-    Validates whether a given string represents a valid IP address (IPv4 or IPv6).
-    
-    This function uses Python's ipaddress module to validate the format and
-    structure of an IP address string. It supports both IPv4 and IPv6 formats.
-    
-    Args:
-        ip_str (str): The IP address string to validate
-        
-    Returns:
-        bool: True if the IP address is valid, False otherwise
-        
-    Example:
-        >>> is_valid_ip("192.168.1.1")
-        True
-        >>> is_valid_ip("invalid_ip")
-        False
-        >>> is_valid_ip("2001:db8::1")
-        True
-    """
-    try:
-        ipaddress.ip_address(ip_str)
-        return True
-    except ValueError:
-        return False
-
-def validate_ip_address(ecu_config_list, logger):
+def validate_ip_address(ecu_config_list, py_logger):
     for ecu in ecu_config_list:
         if is_valid_ip(ecu['ip-address']):
             continue
         else:
-            logger.info(f"Entered IP address for {ecu['ecu-type']} is not valid.")
+            py_logger.info(f"Entered IP address for {ecu['ecu-type']} is not valid.")
             return False
     return True
 
-def capture_logs_from_dlt_viewer(log_file_name, dlt_file_name, project_file_name, config, ecu_type, logger):
+def capture_logs_from_dlt_viewer(log_file_name, dlt_file_name, project_file_name, config, ecu_type, py_logger):
     print("capture_logs_from_dlt_viewer :: START")
     timeout = config['DLT-Viewer Log Capture Time']
     script_dir = Path(__file__).parent.joinpath("dlt-viewer.bat")
@@ -793,8 +736,8 @@ def capture_logs_from_dlt_viewer(log_file_name, dlt_file_name, project_file_name
             dlt_viewer_path = config['windows']['DLT-Viewer Installed Path']
             # dlt_viewer_path = os.path.join(dlt_viewer_path, "dlt-viewer.exe")
             log_file_name = os.path.join(log_file_name)
-            logger.info(f"dlt_viewer_path: {dlt_viewer_path}")
-            logger.info(f"log_file_name : {log_file_name}")
+            py_logger.info(f"dlt_viewer_path: {dlt_viewer_path}")
+            py_logger.info(f"log_file_name : {log_file_name}")
             # subprocess.call([r"dlt-viewer.bat", dlt_viewer_path + "\\", str(timeout), log_file_name])
             subprocess.call([script_dir, dlt_viewer_path, str(timeout), log_file_name, dlt_file_name, project_file_name])
     elif sys.platform.startswith("linux"):
@@ -805,18 +748,15 @@ def capture_logs_from_dlt_viewer(log_file_name, dlt_file_name, project_file_name
 
     size = os.path.getsize(log_file_name)
     if size == 0:
-        logger.warning(f"Generated {os.path.basename(log_file_name)} is empty, Please check for valid IP-address / Status of {ecu_type}.")
+        py_logger.warning(f"Generated {os.path.basename(log_file_name)} is empty, Please check for valid IP-address / Status of {ecu_type}.")
         return False
     return True
 
-
- 
-
-def process_log_file(i, ecu_type, setup_type, log_file_details, dlp_file, config, sheet, shutdown_summary, logger):
+def process_log_file(i, ecu_type, setup_type, log_file_details, dlp_file, config, sheet, shutdown_summary, py_logger):
     try:
         # Get the log file path and name for the specified ECU type and timestamp
         filename, logfile, dltfile = log_file_details
-        if not capture_logs_from_dlt_viewer(filename, dltfile, dlp_file, config, ecu_type, logger):
+        if not capture_logs_from_dlt_viewer(filename, dltfile, dlp_file, config, ecu_type, py_logger):
             return False
         # Attempt to open the log file in read mode with error handling for encoding issues
         try:
@@ -824,44 +764,43 @@ def process_log_file(i, ecu_type, setup_type, log_file_details, dlp_file, config
                 lines = file.readlines()
                 time.sleep(2)
         except FileNotFoundError:
-            logger.error(f"File not found: {filename}")
+            py_logger.error(f"File not found: {filename}")
             return False
         except UnicodeDecodeError as e:
-            logger.error(f"Unicode decode error: {e}")
+            py_logger.error(f"Unicode decode error: {e}")
             return False
-            
+           
         # Extract the shutdown timing data from the log file
         mfg_timestamp, terminated_apps = extract_shutdown_timing_data(lines)
         if mfg_timestamp is None:
-            logger.error("Error: Unable to extract shutdown timing data.")
+            py_logger.error("Error: Unable to extract shutdown timing data.")
             return False
-    
+   
         if (terminated_apps is None) or (len(terminated_apps) == 0):
-            logger.error("Error: No terminated applications found.")
+            py_logger.error("Error: No terminated applications found.")
             return False
-    
-        mfg_datetime, shutdown_app_timings = calculate_differences(mfg_timestamp, terminated_apps, logger)
+   
+        mfg_datetime, shutdown_app_timings = calculate_differences(mfg_timestamp, terminated_apps, py_logger)
         print("differences::"+str(shutdown_app_timings))
-    
+   
         # Check if the differences were calculated
         if shutdown_app_timings is None or len(shutdown_app_timings) == 0:
-            logger.error("Found error in measuring time differences from EXM termination to applications termination time")
+            py_logger.error("Found error in measuring time differences from EXM termination to applications termination time")
             return False
-            
+           
         update_shutdown_summary(shutdown_summary, shutdown_app_timings)
 
-        generate_apps_shutdown_report_from_QNX_shutdown(ecu_type, sheet, mfg_datetime, shutdown_app_timings, logger)
-    
+        generate_apps_shutdown_report_from_QNX_shutdown(ecu_type, sheet, mfg_datetime, shutdown_app_timings, py_logger)
+   
         # Add a hyperlink to the log file in the Excel sheet
         add_logfile_hyperlink(filename, logfile, sheet, ecu_type, setup_type)
 
     except Exception as e:
-        logger.error(f"Exception :: {e}")
+        py_logger.error(f"Exception :: {e}")
         return False
-    return True          
+    return True      
 
-
-def start_shutdown_time_measurement(logger):
+def start_shutdown_time_measurement(py_logger):
     cur_dt_time_obj = datetime.now()
     global local_save_path
     # local_save_path = Path(__file__).parents[1].joinpath("Reports", "04_Shutdown_Time", "20250707_12-34-56")
@@ -870,49 +809,49 @@ def start_shutdown_time_measurement(logger):
     global current_timestamp
     # current_timestamp = '20250707_123456'
     current_timestamp = cur_dt_time_obj.strftime("%Y%m%d_%H%M%S")
-    
-    
+    global table_headers
+    table_headers  = list()
+   
     script_start_time = time.perf_counter()
     try:
-        
+        workbook_map = {}
+        fgs_map = {}
+        # Initialize a dictionary to store the shutdown summary data
+        shutdown_summary_map = {}
+        setup_type = None
+        enabled_ecu_list = set()      
+       
         isSuccess = True
         anySheet = []
 
         # Load the configuration
         config_file_path = 'shutdown_time_config.json'
-        config = load_config(config_file_path, logger)
+        config = load_config(config_file_path, py_logger)
 
         # Check if the configuration is empty
         if config is None:
-            logger.error(f"File '{config_file_path}' not found.")
+            py_logger.error(f"File '{config_file_path}' not found.")
             return False
-
+       
         if config['windows']['DLT-Viewer Installed Path'] and not os.path.isfile(os.path.join(config['windows']['DLT-Viewer Installed Path'])):
-            logger.error("Configured DLT-Viewer path is not valid.")
+            py_logger.error("Configured dlt-viewer path is not valid.")
             return False
 
         # Retrieve the number of iterations from the configuration
         try:
             iterations = config["Iterations"]
         except KeyError:
-            logger.error("Error: 'Iterations' key not found in the configuration file.")
+            py_logger.error("Error: 'Iterations' key not found in the configuration file.")
             return False
        
         try:
             duration = config["DLT-Viewer Log Capture Time"]
             if not isinstance(duration, int):
-                logger.error("Error: 'duration' must be an integer.")
+                py_logger.error("Error: 'duration' must be an integer.")
                 return False
         except KeyError:
-            logger.error("Error: 'duration' key not found in the configuration file.")
-            return False
-
-        workbook_map = {}
-        fgs_map = {}
-        # Initialize a dictionary to store the shutdown summary data
-        shutdown_summary_map = {}
-        setup_type = None
-        enabled_ecu_list = set()
+            py_logger.error("Error: 'duration' key not found in the configuration file.")
+            return False        
                
         if config.get('ECU_setting', {}).get('PADAS', {}).get('RCAR', False):
             enabled_ecu_list.add('RCAR')
@@ -925,18 +864,18 @@ def start_shutdown_time_measurement(logger):
        
         print(setup_type, enabled_ecu_list)
         if setup_type is None or len(enabled_ecu_list) == 0:
-            logger.error("No enabled ECU found in the configuration.")
+            py_logger.error("No enabled ECU found in the configuration.")
             return False
-            
+           
         def get_ecu_setting(config, prop):
-            logger.info("get_ecu_setting :: {}".format(prop))
+            py_logger.info("get_ecu_setting :: {}".format(prop))
             return config['ECU_setting'].get(prop)
 
         ecu_config_list = [
             {
                 'ecu-type': ecu_name,
-                'ip-address': get_ecu_setting(config, '' if ecu_name == ECUType.RCAR.value else 'Qualcomm_' f'{ecu_name}_IPAddress'),
-                'ftp-user': get_ecu_setting(config, f'{ecu_name}_FTP_Username'), 
+                'ip-address': get_ecu_setting(config, f'{ecu_name}_IPAddress'),
+                'ftp-user': get_ecu_setting(config, f'{ecu_name}_FTP_Username'),
                 'ftp-passwd': get_ecu_setting(config, f'{ecu_name}_FTP_Password'),
                 'tn-user': get_ecu_setting(config, f'{ecu_name}_Telnet_Username'),
                 'tn-passwd': get_ecu_setting(config, f'{ecu_name}_Telnet_Password')
@@ -947,7 +886,7 @@ def start_shutdown_time_measurement(logger):
         for ecu in ecu_config_list:
             fgs_transfer = FGSTransfer(
                 config,
-                logger,
+                py_logger,
                 ecu['ip-address'],
                 ecu['tn-user'],
                 ecu['tn-passwd'],
@@ -957,15 +896,15 @@ def start_shutdown_time_measurement(logger):
             fgs_map[ecu['ecu-type']] = fgs_transfer
             if not fgs_transfer.remote_fgs_transfer():
                 return False
-            workbook_map[ecu['ecu-type']] = tuple(create_workBook(ecu['ecu-type'], setup_type, iterations, config, logger))
+            workbook_map[ecu['ecu-type']] = tuple(create_workBook(ecu['ecu-type'], setup_type, iterations, py_logger))
 
             if workbook_map[ecu['ecu-type']][2] is None:
-                logger.error("Error: Unable to create workbook.")
+                py_logger.error("Error: Unable to create workbook.")
                 return False
 
             shutdown_summary_map[ecu['ecu-type']] = {}
 
-        if not validate_ip_address(ecu_config_list, logger):
+        if not validate_ip_address(ecu_config_list, py_logger):
             return False
            
         dlp_files = create_dlp_files(ecu_config_list, setup_type)
@@ -975,10 +914,10 @@ def start_shutdown_time_measurement(logger):
         for i in range(iterations):
            
             if setup_type == ECUType.RCAR.value:
-                if not RCAR_ON_OFF_Relay(config.get('Power ON-OFF Delay', 25), logger):
+                if not RCAR_ON_OFF_Relay(config.get('power-on-off-delay-in-seconds', 25), py_logger):
                     return False
             else:
-                if not power_ON_OFF_Relay(config.get('serial-port-relay'), config.get('baudrate-relay'), config.get('Power ON-OFF Delay', 25), logger):
+                if not power_ON_OFF_Relay(config.get('serial-port-relay'), config.get('baudrate-relay'), config.get('power-on-off-delay-in-seconds', 25), py_logger):
                     return False
 
             threads = []
@@ -992,7 +931,7 @@ def start_shutdown_time_measurement(logger):
                 else:
                     filename_list[ecu_type] = tuple(get_log_file_path(ecu_type, setup_type, i))
                 if any(not filename for (filename, logfile, dltfile) in filename_list.values()):
-                    logger.error("Log file not created")
+                    py_logger.error("Log file not created")
                     return False
                 thread = ResultThread(
                     target=process_log_file,
@@ -1005,7 +944,7 @@ def start_shutdown_time_measurement(logger):
                         config,
                         sheets[i],
                         shutdown_summary_map[ecu_type],
-                        logger
+                        py_logger
                      )
                 )
 
@@ -1026,25 +965,30 @@ def start_shutdown_time_measurement(logger):
            
             print("shutdown_summary::"+str(shutdown_summary_map[ecu_type]))
             # Export the average data to the Excel sheet
-            if not export_and_plot_average_data_to_excel(summary_sheet, ecu_type, shutdown_summary_map[ecu_type], workbook, report_file, logger):
-                logger.error("Error exporting and plotting average data to Excel.")
+            if not export_and_plot_average_data_to_excel(summary_sheet, ecu_type, shutdown_summary_map[ecu_type], workbook, report_file, py_logger):
+                py_logger.error("Error exporting and plotting average data to Excel.")
                 isSuccess = False
 
-        # logger. a success message
-        logger.info(f"Test report is created successfully {report_file}")
+        # py_logger. a success message
+        py_logger.info(f"Test report is created successfully {report_file}")
 
     except KeyError as e:
-        logger.error(f"Error: Missing expected key in ECU input fields: {e}")
+        py_logger.error(f"Error: Missing expected key in ECU input fields: {e}")
         isSuccess = False
     except Exception as e:
-        logger.error(f"An error occurred: {e}")
+        py_logger.error(f"An error occurred: {e}")
         isSuccess = False
     finally:
-        remove_png_files(logger)
-        script_end_time = time.perf_counter()
-        for ecu_type, fgs_transfer in fgs_map.items():
-            if fgs_transfer:
-                fgs_transfer.remote_fgs_cleanup()
-        logger.info(f"Total script execution time: {(script_end_time-script_start_time):.3f} seconds")
+        try:
+            remove_png_files(py_logger)
+            script_end_time = time.perf_counter()          
+       
+            for ecu_type, fgs_transfer in fgs_map.items():
+                if fgs_transfer:
+                    fgs_transfer.remote_fgs_cleanup()
+
+            py_logger.info(f"Total script execution time: {(script_end_time-script_start_time):.3f} seconds")
+        except Exception as e:
+            print(f"Exception occurred as {e}")
     print("Final response :: ", isSuccess)
     return isSuccess

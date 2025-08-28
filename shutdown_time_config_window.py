@@ -205,6 +205,8 @@ class ShutdownTimeConfig(QDialog):
                 enabled = False        
 
         self.ok_btn.setEnabled(enabled)
+        if not enabled:
+            self.ok_btn.setToolTip("To enable the OK Button, configure all red highlighted fields")
 
     def browse_path(self, line_edit):
         path, _ = QFileDialog.getOpenFileName(self, 'Select dlt-viewer executable', '', 'Executable files (*.exe)')

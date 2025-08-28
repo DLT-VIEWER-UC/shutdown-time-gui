@@ -29,7 +29,7 @@ class ShutdownTimeConfig(QDialog):
         'windows': {'Is Environment Path Set': False, 'DLT-Viewer Installed Path': ''}        
     }
 
-    def __init__(self, main_window):
+    def __init__(self, main_window, is_Checked):
         super().__init__()
         self.main_window = main_window
         self.set_window_properties()
@@ -93,9 +93,9 @@ class ShutdownTimeConfig(QDialog):
 
             le = QLineEdit(str(self.config_data.get(key, '')))
             if key == 'DLT-Viewer Log Capture Time':
-                le.setPlaceholderText('1 - 500')
-            else:
-                le.setPlaceholderText('1 - 50')
+                le.textChanged.connect(lambda text: [self.update_border('DLT-Viewer Log Capture Time')])
+            elif key == 'Iterations':
+                le.textChanged.connect(lambda text: [self.update_border('Iterations')])
             # le.textChanged.connect(lambda text: [self.ok_btn.setDisabled(False)])
             le.textChanged.connect(lambda text: [self.on_change_update_ok_btn_state()])
             le.setValidator(validator)
@@ -103,7 +103,9 @@ class ShutdownTimeConfig(QDialog):
             row_layout = QHBoxLayout()
             row_layout.addWidget(le)
             if key != 'Iterations':
-                row_layout.addWidget(QLabel('sec'))
+                row_layout.addWidget(QLabel('120 - 500 (sec)'))
+            else:
+                row_layout.addWidget(QLabel('1 - 50'))
             general_layout.addRow(QLabel(key), row_layout)
             self.widgets[key] = le
         general_group.setLayout(general_layout)
@@ -120,7 +122,7 @@ class ShutdownTimeConfig(QDialog):
         path_le.textChanged.connect(lambda text: [self.on_change_update_ok_btn_state()])
         path_le.setMaxLength(250)
         count_lbl = QLabel(f"{len(path_le.text())} / {path_le.maxLength()}")
-        path_le.textChanged.connect(lambda text: count_lbl.setText(f"{len(text)} / {path_le.maxLength()}"))
+        path_le.textChanged.connect(lambda text: [count_lbl.setText(f"{len(text)} / {path_le.maxLength()}"), self.update_border('windows.DLT-Viewer Installed Path')])
         browse_btn = QPushButton('Browse')
         browse_btn.clicked.connect(lambda: self.browse_path(path_le))
         hl = QHBoxLayout()
@@ -137,7 +139,7 @@ class ShutdownTimeConfig(QDialog):
         browse_btn.setDisabled(path_cb.isChecked())
         count_lbl.setDisabled(path_cb.isChecked())
        
-        path_cb.toggled.connect(lambda checked: [path_le.setDisabled(checked), browse_btn.setDisabled(checked), count_lbl.setDisabled(checked), self.on_change_update_ok_btn_state()])
+        path_cb.toggled.connect(lambda checked: [path_le.setDisabled(checked), browse_btn.setDisabled(checked), count_lbl.setDisabled(checked), self.on_change_update_ok_btn_state(), self.update_border('windows.DLT-Viewer Installed Path')])
 
         btn_h = QHBoxLayout()
         btn_h.addStretch()
@@ -173,6 +175,17 @@ class ShutdownTimeConfig(QDialog):
             self.soc1_cb.setChecked(False)
         # for i in (1, 2):
         #     self.ecu_block_list[i].setVisible(visible)
+        
+    def update_border(self, key):
+        text = self.widgets[key].text()
+        if not text or len(text) == 0:
+            self.widgets[key].setStyleSheet("border: 1px solid red;")
+        elif key == 'DLT-Viewer Log Capture Time' and not (120 <= int(text) <= 500):
+            self.widgets[key].setStyleSheet("border: 1px solid red;")
+        elif key == 'windows.DLT-Viewer Installed Path' and (text.startswith(" ") or text.endswith(" ")) and not self.widgets['windows.Is Environment Path Set'].isChecked():
+            self.widgets[key].setStyleSheet("border: 1px solid red;")
+        else:
+            self.widgets[key].setStyleSheet("border: 0px;")
 
     def on_change_update_ok_btn_state(self):
         enabled = True
@@ -181,10 +194,14 @@ class ShutdownTimeConfig(QDialog):
             if not text or len(text) == 0:
                 enabled = False
                 break
+            if key == 'DLT-Viewer Log Capture Time' and not (120 <= int(text) <= 500):
+                enabled = False
+                break
+            
         if enabled:
             path_cb = self.widgets['windows.Is Environment Path Set']
             path_le = self.widgets['windows.DLT-Viewer Installed Path']
-            if not path_cb.isChecked() and (not path_le.text() or len(path_le.text()) == 0):
+            if not path_cb.isChecked() and (not path_le.text() or len(path_le.text()) == 0 or path_le.text().startswith(" ") or path_le.text().endswith(" ")):
                 enabled = False        
 
         self.ok_btn.setEnabled(enabled)

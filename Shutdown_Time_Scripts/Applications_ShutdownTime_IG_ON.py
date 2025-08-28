@@ -981,12 +981,17 @@ def start_shutdown_time_measurement(py_logger):
     finally:
         try:
             remove_png_files(py_logger)
-            script_end_time = time.perf_counter()          
-       
+            
+            if setup_type == ECUType.RCAR.value:
+                RCAR_ON_OFF_Relay(config.get('power-on-off-delay-in-seconds', 25), py_logger)
+            else:
+                power_ON_OFF_Relay(config.get('serial-port-relay'), config.get('baudrate-relay'), config.get('power-on-off-delay-in-seconds', 25), py_logger)
+
             for ecu_type, fgs_transfer in fgs_map.items():
                 if fgs_transfer:
                     fgs_transfer.remote_fgs_cleanup()
 
+            script_end_time = time.perf_counter()
             py_logger.info(f"Total script execution time: {(script_end_time-script_start_time):.3f} seconds")
         except Exception as e:
             print(f"Exception occurred as {e}")

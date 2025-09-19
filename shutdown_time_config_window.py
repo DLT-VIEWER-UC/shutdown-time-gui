@@ -32,6 +32,7 @@ class ShutdownTimeConfig(QDialog):
     def __init__(self, main_window, is_Checked):
         super().__init__()
         self.main_window = main_window
+        self.is_KPI_selected = is_Checked
         self.set_window_properties()
 
         self.config_path = './Shutdown_Time_Scripts/shutdown_time_config.json'
@@ -103,7 +104,7 @@ class ShutdownTimeConfig(QDialog):
             row_layout = QHBoxLayout()
             row_layout.addWidget(le)
             if key != 'Iterations':
-                row_layout.addWidget(QLabel('[Int: 150-500 sec]'))
+                row_layout.addWidget(QLabel('[Int: 150-200 sec]'))
             else:
                 row_layout.addWidget(QLabel('[Int: 1-50]'))
             general_layout.addRow(QLabel(key), row_layout)
@@ -118,6 +119,7 @@ class ShutdownTimeConfig(QDialog):
 
         # Path line edit with char count
         path_le = QLineEdit(win.get('DLT-Viewer Installed Path', ''))
+        path_le.setReadOnly(True)
         # path_le.textChanged.connect(lambda text: [self.ok_btn.setDisabled(False)])
         path_le.textChanged.connect(lambda text: [self.on_change_update_ok_btn_state()])
         path_le.setMaxLength(250)
@@ -177,7 +179,7 @@ class ShutdownTimeConfig(QDialog):
             self.soc1_cb.setChecked(False)
         # for i in (1, 2):
         #     self.ecu_block_list[i].setVisible(visible)
-        
+       
     def update_border(self, key):
         widget = self.widgets[key]
         text = widget.text().strip()
@@ -187,7 +189,7 @@ class ShutdownTimeConfig(QDialog):
             path_cb = self.widgets['windows.Is Environment Path Set']
             is_valid = path_cb.isChecked() or (text and text == widget.text())
         elif key == 'DLT-Viewer Log Capture Time':
-            is_valid = text and text.isdigit() and 150 <= int(text) <= 500
+            is_valid = text and text.isdigit() and 150 <= int(text) <= 200
         else:
             is_valid = bool(text)
         widget.setStyleSheet("border: 0px;" if is_valid else "border: 1px solid red;")
@@ -199,15 +201,17 @@ class ShutdownTimeConfig(QDialog):
             if not text or len(text) == 0:
                 enabled = False
                 break
-            if key == 'DLT-Viewer Log Capture Time' and not (150 <= int(text) <= 500):
+            if key == 'DLT-Viewer Log Capture Time' and not (150 <= int(text) <= 200):
                 enabled = False
                 break
-            
+           
         if enabled:
             path_cb = self.widgets['windows.Is Environment Path Set']
             path_le = self.widgets['windows.DLT-Viewer Installed Path']
             if not path_cb.isChecked() and (not path_le.text() or len(path_le.text()) == 0 or path_le.text().startswith(" ") or path_le.text().endswith(" ")):
                 enabled = False        
+
+        enabled = enabled and not (self.main_window.is_test_in_progress and self.is_KPI_selected)
 
         self.ok_btn.setEnabled(enabled)
         if not enabled:

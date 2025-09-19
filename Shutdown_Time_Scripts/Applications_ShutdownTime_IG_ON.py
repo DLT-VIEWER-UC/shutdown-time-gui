@@ -550,7 +550,7 @@ def power_ON_OFF_Relay(serial_port_relay, baudrate_relay, power_on_off_delay, py
        
         py_logger.info("Turning ON relay...")
         signal.write("AT+CH1=1".encode())   # Relay ON
-        time.sleep(0.1)  # 100ms delay
+        time.sleep(25)  # 25S delay
     except Exception as e:
         py_logger.error(f"Failed to open serial port: {e}")
         return False
@@ -804,7 +804,7 @@ def start_shutdown_time_measurement(py_logger):
     cur_dt_time_obj = datetime.now()
     global local_save_path
     # local_save_path = Path(__file__).parents[1].joinpath("Reports", "04_Shutdown_Time", "20250707_12-34-56")
-    local_save_path = Path(__file__).parents[1].joinpath("Reports", "04_Shutdown_Time", cur_dt_time_obj.strftime("%Y%m%d_%H-%M-%S"))
+    local_save_path = Path(__file__).parents[1].joinpath("Reports", "07_Shutdown_Time", cur_dt_time_obj.strftime("%Y%m%d_%H-%M-%S"))
     local_save_path.mkdir(parents=True, exist_ok=True)
     global current_timestamp
     # current_timestamp = '20250707_123456'
@@ -981,7 +981,7 @@ def start_shutdown_time_measurement(py_logger):
     finally:
         try:
             remove_png_files(py_logger)
-            
+           
             if setup_type == ECUType.RCAR.value:
                 RCAR_ON_OFF_Relay(config.get('power-on-off-delay-in-seconds', 25), py_logger)
             else:

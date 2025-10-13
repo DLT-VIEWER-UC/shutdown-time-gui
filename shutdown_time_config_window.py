@@ -1,7 +1,7 @@
 from imports_utils import *
 
 class CustomIntValidator(QIntValidator):
-    def __init__(self, min_value, max_value, parent=None):
+    def __init__(self, min_value, max_value=2147483647, parent=None):
         super().__init__(min_value, max_value, parent)
         self.min_value = min_value
         self.max_value = max_value
@@ -89,8 +89,8 @@ class ShutdownTimeConfig(QDialog):
         general_layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
         for key, validator in [
-            ('DLT-Viewer Log Capture Time', CustomIntValidator(1, 500)),
-            ('Iterations', CustomIntValidator(1, 50))]:
+            ('DLT-Viewer Log Capture Time', CustomIntValidator(1)),
+            ('Iterations', CustomIntValidator(1))]:
 
             le = QLineEdit(str(self.config_data.get(key, '')))
             if key == 'DLT-Viewer Log Capture Time':
@@ -104,9 +104,9 @@ class ShutdownTimeConfig(QDialog):
             row_layout = QHBoxLayout()
             row_layout.addWidget(le)
             if key != 'Iterations':
-                row_layout.addWidget(QLabel('[Int: 150-200 sec]'))
+                row_layout.addWidget(QLabel('[Int: 150~ (sec)]'))
             else:
-                row_layout.addWidget(QLabel('[Int: 1-50]'))
+                row_layout.addWidget(QLabel('[Int: 1~]'))
             general_layout.addRow(QLabel(key), row_layout)
             self.widgets[key] = le
         general_group.setLayout(general_layout)
@@ -126,6 +126,7 @@ class ShutdownTimeConfig(QDialog):
         count_lbl = QLabel(f"{len(path_le.text())} / {path_le.maxLength()}")
         path_le.textChanged.connect(lambda text: [count_lbl.setText(f"{len(text)} / {path_le.maxLength()}"), self.update_border('windows.DLT-Viewer Installed Path')])
         browse_btn = QPushButton('Browse')
+        browse_btn.setFocusPolicy(Qt.NoFocus)
         browse_btn.clicked.connect(lambda: self.browse_path(path_le))
         hl = QHBoxLayout()
         hl.addWidget(path_le)
@@ -146,7 +147,9 @@ class ShutdownTimeConfig(QDialog):
         btn_h = QHBoxLayout()
         btn_h.addStretch()
         self.ok_btn = QPushButton('OK'); self.ok_btn.clicked.connect(self.ok_clicked)
+        self.ok_btn.setFocusPolicy(Qt.NoFocus)
         cancel_btn = QPushButton('Cancel'); cancel_btn.clicked.connect(self.reject)
+        cancel_btn.setFocusPolicy(Qt.NoFocus)
         btn_h.addWidget(self.ok_btn); btn_h.addWidget(cancel_btn)
         layout.addLayout(btn_h)
 
@@ -189,7 +192,7 @@ class ShutdownTimeConfig(QDialog):
             path_cb = self.widgets['windows.Is Environment Path Set']
             is_valid = path_cb.isChecked() or (text and text == widget.text())
         elif key == 'DLT-Viewer Log Capture Time':
-            is_valid = text and text.isdigit() and 150 <= int(text) <= 200
+            is_valid = text and text.isdigit() and 150 <= int(text)
         else:
             is_valid = bool(text)
         widget.setStyleSheet("border: 0px;" if is_valid else "border: 1px solid red;")
@@ -201,7 +204,7 @@ class ShutdownTimeConfig(QDialog):
             if not text or len(text) == 0:
                 enabled = False
                 break
-            if key == 'DLT-Viewer Log Capture Time' and not (150 <= int(text) <= 200):
+            if key == 'DLT-Viewer Log Capture Time' and not (150 <= int(text)):
                 enabled = False
                 break
            

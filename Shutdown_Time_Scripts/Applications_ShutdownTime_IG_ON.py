@@ -1272,6 +1272,7 @@ def start_shutdown_time_measurement(py_logger):
             
             script_end_time = time.perf_counter()
             py_logger.info(f"Total script execution time: {(script_end_time-script_start_time):.3f} seconds")
+            stop_requested.clear()
         except Exception as e:
             print(f"Exception occurred as {e}")
     print("Final response :: ", isSuccess)

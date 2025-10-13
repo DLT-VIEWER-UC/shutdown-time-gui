@@ -661,6 +661,26 @@ def RCAR_ON_OFF_Relay(power_on_off_delay, py_logger):
 
 def power_ON_OFF_Relay(serial_port_relay, baudrate_relay, power_on_off_delay, py_logger):
     try:
+        #set up your serial port with the desire COM port and baudrate.
+        signal = serial.Serial(serial_port_relay, baudrate_relay, bytesize=8, stopbits=1, timeout=1)
+        if not signal.is_open:
+            py_logger.error(f"Failed to open serial port: {serial_port_relay}")
+            return False
+       
+        py_logger.info("Turning OFF relay...")
+        signal.write("AT+CH1=0".encode())   # Relay OFF
+        time.sleep(float(power_on_off_delay))  # Delay for power off
+       
+        py_logger.info("Turning ON relay...")
+        signal.write("AT+CH1=1".encode())   # Relay ON
+        time.sleep(15)  # 15s delay
+    except Exception as e:
+        py_logger.error(f"Failed to open serial port: {e}")
+        return False
+    return True
+    
+def power_ON_OFF_Relay1(serial_port_relay, baudrate_relay, power_on_off_delay, py_logger):
+    try:
         # Check stop flag before starting
         if check_stop_flag_periodically():
             py_logger.info("Stop flag detected. Aborting power relay operation.")
@@ -1257,11 +1277,11 @@ def start_shutdown_time_measurement(py_logger):
             remove_png_files(py_logger)
            
             # Only perform final power cycling if not stopped by user
-            if not stop_requested.is_set():
-                if setup_type == ECUType.RCAR.value:
-                    RCAR_ON_OFF_Relay(config.get('power-on-off-delay-in-seconds', 25), py_logger)
-                else:
-                    power_ON_OFF_Relay(config.get('serial-port-relay'), config.get('baudrate-relay'), config.get('power-on-off-delay-in-seconds', 25), py_logger)
+            #if not stop_requested.is_set():
+            if setup_type == ECUType.RCAR.value:
+                RCAR_ON_OFF_Relay(config.get('power-on-off-delay-in-seconds', 25), py_logger)
+            else:
+                power_ON_OFF_Relay(config.get('serial-port-relay'), config.get('baudrate-relay'), config.get('power-on-off-delay-in-seconds', 25), py_logger)
 
             for ecu_type, fgs_transfer in fgs_map.items():
                 if fgs_transfer:

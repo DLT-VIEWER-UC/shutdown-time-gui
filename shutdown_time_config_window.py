@@ -223,7 +223,16 @@ class ShutdownTimeConfig(QDialog):
             self.ok_btn.setToolTip("")
 
     def browse_path(self, line_edit):
-        path, _ = QFileDialog.getOpenFileName(self, 'Select dlt-viewer executable', '', 'Executable files (*.exe)')
+        # Determine starting directory based on current path in line_edit
+        current_path = line_edit.text().strip()
+        if current_path and os.path.exists(current_path):
+            # If the path itself is a directory, use it
+            start_dir = current_path
+        else:
+            # Default to C drive if path is empty or invalid
+            start_dir = 'C:\\'
+        
+        path, _ = QFileDialog.getOpenFileName(self, 'Select dlt-viewer executable', start_dir, 'Executable files (*.exe)')
         if path:
             line_edit.setText(path)
 

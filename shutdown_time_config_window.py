@@ -104,7 +104,7 @@ class ShutdownTimeConfig(QDialog):
             row_layout = QHBoxLayout()
             row_layout.addWidget(le)
             if key != 'Iterations':
-                row_layout.addWidget(QLabel('[Int: 150~ (sec)]'))
+                row_layout.addWidget(QLabel('[Int: 1~ (sec)]'))
             else:
                 row_layout.addWidget(QLabel('[Int: 1~]'))
             general_layout.addRow(QLabel(key), row_layout)
@@ -192,7 +192,7 @@ class ShutdownTimeConfig(QDialog):
             path_cb = self.widgets['windows.Is Environment Path Set']
             is_valid = path_cb.isChecked() or (text and text == widget.text())
         elif key == 'DLT-Viewer Log Capture Time':
-            is_valid = text and text.isdigit() and 150 <= int(text)
+            is_valid = text and text.isdigit() and 1 <= int(text)
         else:
             is_valid = bool(text)
         widget.setStyleSheet("border: 0px;" if is_valid else "border: 1px solid red;")
@@ -204,7 +204,7 @@ class ShutdownTimeConfig(QDialog):
             if not text or len(text) == 0:
                 enabled = False
                 break
-            if key == 'DLT-Viewer Log Capture Time' and not (150 <= int(text)):
+            if key == 'DLT-Viewer Log Capture Time' and not (1 <= int(text)):
                 enabled = False
                 break
            
